@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>YT Thumbnail Downloader — RRM Video Posting</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 880px;
+    margin: 30px auto;
+    padding: 0 20px;
+    background: #0f1115;
+    color: #e6e6e6;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: #8a93a3; margin: 0 0 24px; font-size: 13px; }
+  .card {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  label { display: block; font-size: 13px; color: #b8bdc8; margin: 12px 0 6px; }
+  input[type=text], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    color: #e6e6e6;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  textarea { min-height: 120px; resize: vertical; }
+  input:focus, textarea:focus { outline: none; border-color: #5b8def; }
+  button {
+    background: #5b8def;
+    color: white;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 14px;
+  }
+  button:hover { background: #4a7ce0; }
+  button.secondary { background: #2a2f3a; }
+  button.secondary:hover { background: #353b48; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .item {
+    background: #0f1115;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .item img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    border-radius: 4px;
+    background: #000;
+  }
+  .item .title { font-size: 13px; margin: 8px 0 4px; word-break: break-word; font-weight: 600; }
+  .item .meta { font-size: 11px; color: #8a93a3; margin-bottom: 8px; }
+  .item .filename { font-size: 11px; color: #6cd17b; margin-bottom: 10px; word-break: break-all; }
+  .item button { margin: 0; padding: 6px 12px; font-size: 12px; }
+  .item .download-btn { width: 100%; }
+  .industry-group { margin-top: 24px; }
+  .industry-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #262a33;
+  }
+  .industry-header h2 {
+    font-size: 16px;
+    margin: 0;
+    color: #c8a8ff;
+    font-weight: 600;
+  }
+  .industry-header .count {
+    font-size: 11px;
+    color: #8a93a3;
+    background: #1c1f27;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .copy-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    background: #181b22;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    padding: 4px 4px 4px 8px;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+  .copy-row .label { color: #8a93a3; flex-shrink: 0; }
+  .copy-row .value {
+    flex: 1;
+    color: #e6e6e6;
+    font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .copy-row button {
+    background: #2a2f3a;
+    color: #b8bdc8;
+    padding: 3px 8px;
+    font-size: 10px;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .copy-row button:hover { background: #353b48; color: white; }
+  .copy-row button.copied { background: #2d7a3e; color: white; }
+  .content-block {
+    background: #181b22;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .content-block .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 4px 4px 8px;
+    border-bottom: 1px solid #2a2f3a;
+    font-size: 11px;
+    color: #8a93a3;
+  }
+  .content-block .head button {
+    background: #2a2f3a;
+    color: #b8bdc8;
+    padding: 3px 8px;
+    font-size: 10px;
+    width: auto;
+  }
+  .content-block .head button:hover { background: #353b48; color: white; }
+  .content-block .head button.copied { background: #2d7a3e; color: white; }
+  .content-block pre {
+    margin: 0;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 110px;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #e6e6e6;
+  }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .tabs button {
+    margin: 0;
+    background: #1c1f27;
+    color: #b8bdc8;
+    font-weight: 500;
+  }
+  .tabs button.active { background: #5b8def; color: white; }
+  .hint { font-size: 12px; color: #8a93a3; margin-top: 6px; }
+  .err { color: #ff7676; font-size: 12px; margin-top: 8px; }
+  code { background: #0f1115; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>YT Thumbnail Downloader</h1>
+<p class="subtitle">Paste YouTube URL + video title → downloads <code>{Title}-thumb.jpg</code> at the highest quality available. Built for the RRM Video Posting SOP.</p>
+
+<div class="tabs">
+  <button id="tab-bulk" class="active" onclick="setMode('bulk')">Bulk (paste email)</button>
+  <button id="tab-single" onclick="setMode('single')">Single</button>
+</div>
+
+<!-- SINGLE MODE -->
+<div class="card" id="single-mode" style="display:none">
+  <label for="url">YouTube URL</label>
+  <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=acMcj1CbpDk">
+
+  <label for="title">Video Title</label>
+  <input type="text" id="title" placeholder="What Google's Latest Search Update Means for Funeral Homes">
+  <p class="hint">Filename will be <code>{Title}-thumb.jpg</code> with characters cleaned for Windows.</p>
+
+  <button onclick="processSingle()">Get Thumbnail</button>
+  <div id="single-err" class="err"></div>
+</div>
+
+<!-- BULK MODE -->
+<div class="card" id="bulk-mode">
+  <label for="bulk">Paste email body (or any text containing "Video Title" + "Video Link" pairs)</label>
+  <textarea id="bulk" placeholder="Date of Posting: 03/10
+Video Title: What Google's Latest Search Update Means for Funeral Homes
+Video Link: https://www.youtube.com/watch?v=acMcj1CbpDk
+
+Video Title: What Makes You Different
+Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
+
+..."></textarea>
+  <p class="hint">Detects every <code>Video Title:</code> + <code>Video Link:</code> pair in order. Works with the standard RRM task email format.</p>
+  <button onclick="processBulk()">Extract All Thumbnails</button>
+  <div id="bulk-err" class="err"></div>
+</div>
+
+<div class="row" id="bulk-actions" style="display:none">
+  <button onclick="downloadAll()">Download All</button>
+  <button class="secondary" onclick="clearResults()">Clear</button>
+</div>
+
+<div class="preview-grid" id="results"></div>
+
+<script>
+  function setMode(m) {
+    document.getElementById('single-mode').style.display = m === 'single' ? '' : 'none';
+    document.getElementById('bulk-mode').style.display = m === 'bulk' ? '' : 'none';
+    document.getElementById('tab-single').classList.toggle('active', m === 'single');
+    document.getElementById('tab-bulk').classList.toggle('active', m === 'bulk');
+  }
+
+  function extractYouTubeId(url) {
+    if (!url) return null;
+    const patterns = [
+      /(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/,
+      /^([A-Za-z0-9_-]{11})$/
+    ];
+    for (const p of patterns) {
+      const m = url.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function safeFilename(title) {
+    return title
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Always use hqdefault per SOP — smaller, consistent, always available.
+  function pickBestThumbnail(id) {
+    return Promise.resolve({
+      url: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+      quality: 'hq (480x360)'
+    });
+  }
+
+  async function fetchAsBlob(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+    return await res.blob();
+  }
+
+  function downloadBlob(blob, filename) {
+    const a = document.createElement('a');
+    const objUrl = URL.createObjectURL(blob);
+    a.href = objUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function copyRow(label, value) {
+    return `
+      <div class="copy-row">
+        <span class="label">${label}:</span>
+        <span class="value" title="${escapeHtml(value)}">${escapeHtml(value)}</span>
+        <button data-copy="${escapeHtml(value)}">Copy</button>
+      </div>
+    `;
+  }
+
+  function attachCopyHandlers(root) {
+    root.querySelectorAll('button[data-copy]').forEach(btn => {
+      btn.onclick = async () => {
+        const text = btn.getAttribute('data-copy');
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Fallback for non-secure contexts
+          const ta = document.createElement('textarea');
+          ta.value = text; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1200);
+      };
+    });
+  }
+
+  function getOrCreateGroup(industry) {
+    const grid = document.getElementById('results');
+    const safeKey = industry.replace(/\W+/g, '-').toLowerCase();
+    let group = document.getElementById('group-' + safeKey);
+    if (group) return group.querySelector('.preview-grid');
+    group = document.createElement('div');
+    group.className = 'industry-group';
+    group.id = 'group-' + safeKey;
+    group.innerHTML = `
+      <div class="industry-header">
+        <h2>${escapeHtml(industry)}</h2>
+        <span class="count" data-count="0">0 videos</span>
+      </div>
+      <div class="preview-grid"></div>
+    `;
+    grid.appendChild(group);
+    return group.querySelector('.preview-grid');
+  }
+
+  function bumpGroupCount(industry) {
+    const safeKey = industry.replace(/\W+/g, '-').toLowerCase();
+    const group = document.getElementById('group-' + safeKey);
+    if (!group) return;
+    const countEl = group.querySelector('.count');
+    const next = (parseInt(countEl.getAttribute('data-count'), 10) || 0) + 1;
+    countEl.setAttribute('data-count', next);
+    countEl.textContent = `${next} video${next === 1 ? '' : 's'}`;
+  }
+
+  function renderItem(entry) {
+    const target = entry.industry
+      ? getOrCreateGroup(entry.industry)
+      : getOrCreateGroup('Ungrouped');
+    const div = document.createElement('div');
+    div.className = 'item';
+    const contentBlock = entry.content ? `
+      <div class="content-block">
+        <div class="head">
+          <span>Content</span>
+          <button data-copy="${escapeHtml(entry.content)}">Copy</button>
+        </div>
+        <pre>${escapeHtml(entry.content)}</pre>
+      </div>
+    ` : '';
+    div.innerHTML = `
+      <img src="${entry.thumbUrl}" alt="thumbnail">
+      <div class="title">${escapeHtml(entry.title)}</div>
+      <div class="meta">${escapeHtml(entry.quality)}${entry.date ? ' &middot; Posting: ' + escapeHtml(entry.date) : ''}</div>
+      ${copyRow('YT ID', entry.id)}
+      ${entry.date ? copyRow('Date', entry.date) : ''}
+      ${copyRow('Title', entry.title)}
+      ${contentBlock}
+      <div class="filename">${escapeHtml(entry.filename)}</div>
+      <button class="download-btn">Download Thumbnail</button>
+    `;
+    div.querySelector('.download-btn').onclick = () => downloadEntry(entry);
+    attachCopyHandlers(div);
+    target.appendChild(div);
+    bumpGroupCount(entry.industry || 'Ungrouped');
+  }
+
+  async function downloadEntry(entry) {
+    try {
+      const blob = await fetchAsBlob(entry.thumbUrl);
+      downloadBlob(blob, entry.filename);
+    } catch (e) {
+      // Fallback: open in new tab so user can right-click save
+      window.open(entry.thumbUrl, '_blank');
+    }
+  }
+
+  async function downloadAll() {
+    for (const entry of currentEntries) {
+      await downloadEntry(entry);
+      await new Promise(r => setTimeout(r, 250)); // let browser flush each save
+    }
+  }
+
+  function clearResults() {
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('bulk-actions').style.display = 'none';
+    currentEntries = [];
+  }
+
+  let currentEntries = [];
+
+  async function processSingle() {
+    const errEl = document.getElementById('single-err');
+    errEl.textContent = '';
+    const url = document.getElementById('url').value.trim();
+    const title = document.getElementById('title').value.trim();
+    if (!url || !title) {
+      errEl.textContent = 'Both URL and title are required.';
+      return;
+    }
+    const id = extractYouTubeId(url);
+    if (!id) {
+      errEl.textContent = 'Could not extract YouTube ID from URL.';
+      return;
+    }
+    const best = await pickBestThumbnail(id);
+    const entry = {
+      id,
+      title,
+      thumbUrl: best.url,
+      quality: best.quality,
+      filename: `${safeFilename(title)}-thumb.jpg`
+    };
+    currentEntries.push(entry);
+    renderItem(entry);
+    document.getElementById('bulk-actions').style.display = '';
+    // Auto-download immediately for single mode
+    downloadEntry(entry);
+  }
+
+  // Find the industry header by looking UPWARD from the Destination Link line
+  // in the original text — i.e., the closest non-label line above the anchor.
+  // Falls back to inferring from the destination URL slug.
+  function detectIndustry(allLines, anchorIdx, destinationUrl) {
+    for (let i = anchorIdx - 1; i >= 0; i--) {
+      const ln = allLines[i].trim();
+      if (!ln) continue;
+      if (/^(content link|date of posting|video title|video link|content)\s*:/i.test(ln)) continue;
+      // Stop if we hit the previous section's content (a Video Link line, etc.)
+      // — those should never count as an industry header.
+      const cleaned = ln.replace(/[:\-–—]+\s*$/, '').replace(/^[#*\s]+/, '').trim();
+      if (cleaned.length > 0 && cleaned.length < 60) return cleaned;
+    }
+    if (destinationUrl) {
+      const slugMap = [
+        [/funeral/i, 'Funeral Homes'],
+        [/rrmathome|home-improvement|hvac|window|flooring/i, 'Home Improvement'],
+        [/seniorcare|senior-care|home-care/i, 'Home Care'],
+        [/hospice/i, 'Hospice']
+      ];
+      for (const [re, name] of slugMap) if (re.test(destinationUrl)) return name;
+    }
+    return 'Ungrouped';
+  }
+
+  // Split the email body into industry sections. Each section starts AT its own
+  // "Destination Link:" line and ends just before the NEXT "Destination Link:".
+  // The industry header is detected by looking upward from each anchor in the
+  // original text (so headers above the first anchor still resolve).
+  function splitIntoSections(text) {
+    const lines = text.split(/\r?\n/);
+    const anchors = [];
+    lines.forEach((ln, i) => {
+      if (/destination\s*link\s*:/i.test(ln)) anchors.push(i);
+    });
+    if (!anchors.length) return [{ text, industry: 'Ungrouped', destinationUrl: null }];
+
+    const sections = [];
+    for (let a = 0; a < anchors.length; a++) {
+      const start = anchors[a];
+      const end = a + 1 < anchors.length ? anchors[a + 1] : lines.length;
+      const sectionText = lines.slice(start, end).join('\n');
+      const destLine = lines[anchors[a]];
+      const destMatch = destLine.match(/destination\s*link\s*:\s*(\S+)/i);
+      const destinationUrl = destMatch ? destMatch[1].trim() : null;
+      const industry = detectIndustry(lines, anchors[a], destinationUrl);
+      sections.push({ text: sectionText, industry, destinationUrl });
+    }
+    return sections;
+  }
+
+  // Strip hashtags per SOP. Removes inline #tags and trims trailing empty lines.
+  function stripHashtags(text) {
+    return text
+      .split(/\r?\n/)
+      .map(l => l.replace(/(^|\s)#[A-Za-z0-9_]+/g, '$1').replace(/\s+$/, ''))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  // Within a section, extract every {date, title, link, content} entry in order.
+  // Date defaults to the most recent "Date of Posting:" seen above the entry.
+  // Content is captured from "Content:" up to the next known label or end of section.
+  function extractTriplets(sectionText) {
+    const lines = sectionText.split(/\r?\n/);
+    const items = [];
+    let currentDate = null;
+    let pendingTitle = null;
+    let pendingLink = null;
+    let collectingContent = false;
+    let contentLines = [];
+
+    const labelRe = /^(destination link|content link|date of posting|video title|video link|content)\s*:/i;
+
+    function commit() {
+      if (pendingTitle && pendingLink) {
+        items.push({
+          date: currentDate,
+          title: pendingTitle,
+          link: pendingLink,
+          content: stripHashtags(contentLines.join('\n'))
+        });
+      }
+      pendingTitle = null;
+      pendingLink = null;
+      contentLines = [];
+      collectingContent = false;
+    }
+
+    for (const raw of lines) {
+      const trimmed = raw.trim();
+
+      const dateM = trimmed.match(/^date of posting\s*:\s*(.+)$/i);
+      if (dateM) { commit(); currentDate = dateM[1].trim(); continue; }
+
+      const titleM = trimmed.match(/^video title\s*:\s*(.+)$/i);
+      if (titleM) { commit(); pendingTitle = titleM[1].trim(); continue; }
+
+      const linkM = trimmed.match(/^video link\s*:\s*(\S+)/i);
+      if (linkM) { pendingLink = linkM[1].trim(); collectingContent = false; continue; }
+
+      const contentM = trimmed.match(/^content\s*:\s*(.*)$/i);
+      if (contentM) {
+        collectingContent = true;
+        if (contentM[1]) contentLines.push(contentM[1]);
+        continue;
+      }
+
+      // Any other recognized label ends content collection
+      if (labelRe.test(trimmed)) { collectingContent = false; continue; }
+
+      if (collectingContent) contentLines.push(raw);
+    }
+    commit();
+    return items;
+  }
+
+  async function processBulk() {
+    const errEl = document.getElementById('bulk-err');
+    errEl.textContent = '';
+    clearResults();
+    const text = document.getElementById('bulk').value;
+    if (!text.trim()) {
+      errEl.textContent = 'Paste the email body first.';
+      return;
+    }
+
+    const sections = splitIntoSections(text);
+    let total = 0;
+
+    for (const sec of sections) {
+      const triplets = extractTriplets(sec.text);
+      for (const t of triplets) {
+        const id = extractYouTubeId(t.link);
+        if (!id) continue;
+        const best = await pickBestThumbnail(id);
+        const entry = {
+          id,
+          title: t.title,
+          date: t.date,
+          content: t.content,
+          industry: sec.industry,
+          thumbUrl: best.url,
+          quality: best.quality,
+          filename: `${safeFilename(t.title)}-thumb.jpg`
+        };
+        currentEntries.push(entry);
+        renderItem(entry);
+        total++;
+      }
+    }
+
+    if (!total) {
+      errEl.textContent = 'No "Video Title:" / "Video Link:" pairs found.';
+      return;
+    }
+    document.getElementById('bulk-actions').style.display = '';
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RRM Web Support Tools</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 20px 60px;
+    background: #0f1115;
+    color: #e6e6e6;
+    line-height: 1.5;
+  }
+  header { margin-bottom: 32px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  .subtitle { color: #8a93a3; font-size: 14px; margin: 0; }
+  .tools { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 640px) {
+    .tools { grid-template-columns: 1fr 1fr; }
+  }
+  .tool {
+    display: block;
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 10px;
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s, transform .15s;
+  }
+  .tool:hover { border-color: #5b8def; transform: translateY(-2px); }
+  .tool h2 { font-size: 17px; margin: 0 0 6px; color: #c8a8ff; }
+  .tool .desc { font-size: 13px; color: #b8bdc8; margin: 0 0 10px; }
+  .tool .when { font-size: 11px; color: #8a93a3; }
+  .tool .when strong { color: #6cd17b; font-weight: 600; }
+  footer {
+    margin-top: 36px;
+    padding-top: 18px;
+    border-top: 1px solid #262a33;
+    color: #8a93a3;
+    font-size: 12px;
+  }
+  footer a { color: #5b8def; text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RRM Web Support Tools</h1>
+  <p class="subtitle">Browser-based utilities for routine website tasks. Single-file, no install, runs entirely in your browser.</p>
+</header>
+
+<div class="tools">
+
+  <a class="tool" href="./yt-thumbnail-downloader.html">
+    <h2>YT Thumbnail Downloader</h2>
+    <p class="desc">Paste the video posting task email — extracts YT IDs, dates, titles, content, and downloads thumbnails (named per SOP) for every post, grouped by industry.</p>
+    <p class="when"><strong>Use for:</strong> RRM Video Posting (weekly, 3-4 posts per niche site)</p>
+  </a>
+
+  <a class="tool" href="./docx-batch-to-wordpress.html">
+    <h2>DOCX Batch → WordPress</h2>
+    <p class="desc">Drop a site's monthly ZIP — parses every .docx into WordPress-ready HTML, pairs each with its featured image, runs grammar/format/consistency checks.</p>
+    <p class="when"><strong>Use for:</strong> Monthly blog batch posting per site</p>
+  </a>
+
+</div>
+
+<footer>
+  Maintained by the RRM Web Support Team. See <a href="./README.md">README</a> for tool details, conventions, and how to add a new tool.
+</footer>
+
+</body>
+</html>

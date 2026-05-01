@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DOCX Batch → WordPress</title>
+<script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #1d2129;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --muted: #8a93a4;
+    --accent: #4f8cff;
+    --accent-dim: #2b4a8c;
+    --ok: #4ade80;
+    --warn: #ffb347;
+    --error: #ff5d6c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .nav-link {
+    color: var(--muted);
+    font-size: 12px;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 6px;
+  }
+  header .nav-link:hover { color: var(--text); border-color: var(--accent); }
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  .dropzone {
+    display: block;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 40px 24px;
+    text-align: center;
+    background: var(--panel);
+    transition: border-color .15s, background .15s;
+    cursor: pointer;
+  }
+  .dropzone:hover { border-color: var(--accent-dim); }
+  .dropzone.drag { border-color: var(--accent); background: #182234; }
+  .dropzone .big { font-size: 16px; margin-bottom: 6px; }
+  .dropzone .small { color: var(--muted); font-size: 13px; }
+  .dropzone input[type=file] { display: none; }
+  .dropzone .pick {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 14px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .status {
+    margin: 16px 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    font-size: 13px;
+    color: var(--muted);
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.ok { color: var(--ok); border-color: #1f4f37; }
+  .status.err { color: var(--error); border-color: #4f1f27; }
+
+  /* Per-batch site / topic selector */
+  .batch-meta {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 16px;
+    display: none;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: end;
+  }
+  .batch-meta.show { display: flex; }
+  .batch-meta .group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 180px;
+  }
+  .batch-meta label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .batch-meta select,
+  .batch-meta input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .batch-meta .summary {
+    flex: 1;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+    min-width: 200px;
+  }
+  .batch-meta .cat-chip {
+    display: inline-block;
+    background: rgba(79, 140, 255, .12);
+    border: 1px solid rgba(79, 140, 255, .35);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Queue */
+  .queue { margin-top: 18px; display: none; }
+  .queue.show { display: block; }
+  .queue-head {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    font-weight: 700;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .queue-actions { display: flex; gap: 6px; }
+
+  .ghost-btn,
+  .copy-btn {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .ghost-btn:hover,
+  .copy-btn:hover { background: var(--accent-dim); border-color: var(--accent); }
+  .copy-btn.copied { background: var(--ok); color: #0f1115; border-color: var(--ok); }
+  .ghost-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .card.has-errors { border-left-color: var(--error); }
+  .card.has-warnings { border-left-color: var(--warn); }
+  .card.clean { border-left-color: var(--ok); }
+
+  .card-summary {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 14px;
+    padding: 12px 14px;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-summary:hover { background: var(--panel2); }
+  .thumb {
+    width: 80px;
+    height: 60px;
+    border-radius: 6px;
+    background: #0b0d12;
+    background-size: cover;
+    background-position: center;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .card-info .date {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .card-info .title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 2px 0 4px;
+    color: var(--text);
+  }
+  .card-info .meta-row {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.error { background: rgba(255, 93, 108, 0.15); color: var(--error); }
+  .badge.warn  { background: rgba(255, 179, 71, 0.15);  color: var(--warn); }
+  .badge.ok    { background: rgba(74, 222, 128, 0.15);  color: var(--ok); }
+  .badge.dim   { background: rgba(138, 147, 164, .15); color: var(--muted); }
+
+  .chev {
+    color: var(--muted);
+    font-size: 18px;
+    transition: transform .15s;
+  }
+  .card.open .chev { transform: rotate(90deg); }
+
+  .card-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 14px;
+  }
+  .card.open .card-body { display: block; }
+
+  .field {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--field-accent, var(--border));
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .field.f-date  { --field-accent: #4f8cff; }
+  .field.f-title { --field-accent: #a78bfa; }
+  .field.f-seo   { --field-accent: #ffb347; }
+  .field.f-meta  { --field-accent: #38bdf8; }
+  .field.f-html  { --field-accent: #4ade80; }
+  .field.f-check { --field-accent: #facc15; }
+
+  .field-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel2);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .field-head .label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--field-accent);
+  }
+  .field-head .label .icon {
+    margin-right: 6px;
+    font-size: 14px;
+  }
+  .field-head .hint {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 8px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .field-body { padding: 8px 12px; }
+  .field-body input,
+  .field-body textarea {
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    border: 0;
+    outline: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    resize: vertical;
+  }
+  .field-body input { padding: 2px 0; }
+  .field-body textarea { min-height: 50px; line-height: 1.5; }
+  .field-body textarea.html { min-height: 280px; }
+
+  .row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .row-2col > .field { margin-bottom: 0; }
+  @media (max-width: 760px) {
+    .row-2col { grid-template-columns: 1fr; gap: 0; }
+    .row-2col > .field { margin-bottom: 10px; }
+  }
+
+  /* Issues mini-panel */
+  .issues-body { padding: 10px 12px; }
+  .issue {
+    background: #0b0d12;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warn);
+    padding: 8px 10px;
+    border-radius: 5px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .issue.error { border-left-color: var(--error); }
+  .issue .msg { font-weight: 500; }
+  .issue .ctx {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    background: #060709;
+    padding: 5px 7px;
+    border-radius: 3px;
+    margin-top: 5px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 100px;
+    overflow: auto;
+  }
+  .issue .fix { color: var(--ok); margin-top: 4px; font-size: 11px; }
+  .issue .fix-btn {
+    margin-top: 6px;
+    background: rgba(74, 222, 128, 0.12);
+    color: var(--ok);
+    border: 1px solid rgba(74, 222, 128, 0.4);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .issue .fix-btn:hover { background: rgba(74, 222, 128, 0.2); }
+  .issue.applied { opacity: .5; }
+  .issue.applied .fix-btn { display: none; }
+  .group-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+    margin: 8px 0 6px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .empty { color: var(--muted); font-style: italic; font-size: 12px; }
+
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  details.preview-block {
+    margin-top: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  details.preview-block > summary {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .preview-body {
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+    background: #fff;
+    color: #1a1a1a;
+  }
+  .preview-body :first-child { margin-top: 0; }
+  .preview-body h2 { color: #1a1a1a; }
+  .preview-body img { max-width: 100%; height: auto; }
+
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 24px 16px 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>DOCX Batch → WordPress</h1>
+    <div class="sub">Drop one site's monthly ZIP — get all 4 posts parsed, paired with images, ready to schedule.</div>
+  </div>
+  <a class="nav-link" href="docx-to-wordpress.html">← Single-post tool</a>
+</header>
+
+<main>
+  <label class="dropzone" id="drop">
+    <div class="big">Drop the monthly ZIP here</div>
+    <div class="small">One ZIP per site/topic. Tool auto-pairs each .docx with its featured image.</div>
+    <span class="pick">Choose ZIP</span>
+    <input type="file" id="file" accept=".zip,application/zip,application/x-zip-compressed">
+  </label>
+
+  <div class="status" id="status"></div>
+
+  <div class="batch-meta" id="batchMeta">
+    <div class="group">
+      <label>Site</label>
+      <select id="siteSelect"></select>
+    </div>
+    <div class="group">
+      <label>Topic</label>
+      <select id="topicSelect"></select>
+    </div>
+    <div class="summary">
+      <span id="catSummary"></span>
+    </div>
+  </div>
+
+  <section class="queue" id="queue">
+    <div class="queue-head">
+      <span id="queueLabel">Posts</span>
+      <div class="queue-actions">
+        <button class="ghost-btn" id="checkAllBtn">Run Quality Check on All</button>
+        <button class="ghost-btn" id="expandAllBtn">Expand all</button>
+      </div>
+    </div>
+    <div id="queueList"></div>
+  </section>
+</main>
+
+<footer>
+  Phase 1 — local conversion. Phase 2 (auto-publish via WP REST API) coming next.
+</footer>
+
+<script>
+/* ============================================================
+   Site / topic / category configuration
+   ============================================================ */
+const SITES = [
+  {
+    id: "rrmathome",
+    name: "RRM@home",
+    aliases: ["rrmathome", "rrm@home", "rrm at home", "rrmhome"],
+    topics: [
+      { id: "flooring", name: "Flooring", category: "Blogs" },
+      { id: "hvac", name: "HVAC", category: "Blogs" },
+      { id: "windows", name: "Windows and Doors", category: "Blogs" }
+    ]
+  },
+  {
+    id: "rrm",
+    name: "RRM",
+    aliases: ["rrm"],
+    topics: [
+      { id: "funeral", name: "Funeral", category: "Funeral > Blogs" },
+      { id: "cemetery", name: "Cemetery", category: "Cemetery > Blogs" }
+    ]
+  },
+  {
+    id: "scmm",
+    name: "SCMM",
+    aliases: ["scmm"],
+    topics: [
+      { id: "homehealth", name: "Home Health", category: "Blogs" },
+      { id: "homecare", name: "Home Care", category: "Blogs" }
+    ]
+  },
+  {
+    id: "hospice",
+    name: "Hospice",
+    aliases: ["hospice"],
+    topics: [
+      { id: "hospice", name: "Hospice", category: "Blogs" }
+    ]
+  }
+];
+
+/* ============================================================
+   PART 1 — DOCX → WordPress conversion (same as single-post tool)
+   ============================================================ */
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December"
+];
+
+function plainText(htmlFragment) {
+  return htmlFragment
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function normalize(s) {
+  return s
+    .replace(/[‘’′`]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeHtmlForTag(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function splitBlocks(html) {
+  const out = [];
+  const re = /<(p|ul|ol)\b[^>]*>[\s\S]*?<\/\1>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) out.push(m[0]);
+  return out;
+}
+
+function parseFromHtml(html, filename) {
+  const blocks = splitBlocks(html);
+  let dateText = "";
+  let titleText = "";
+  let bodyStart = 0;
+
+  for (let i = 0; i < blocks.length; i++) {
+    const text = plainText(blocks[i]);
+    if (/^\d{1,2}\.\d{1,2}$/.test(text)) {
+      dateText = text;
+      if (blocks[i + 1]) titleText = plainText(blocks[i + 1]);
+      bodyStart = i + 2;
+      break;
+    }
+  }
+  if (!titleText) {
+    for (let i = 0; i < blocks.length; i++) {
+      if (/^<p>\s*<strong>[\s\S]+?<\/strong>\s*<\/p>$/.test(blocks[i])) {
+        titleText = plainText(blocks[i]);
+        bodyStart = i + 1;
+        break;
+      }
+    }
+  }
+
+  let bodyEnd = blocks.length;
+  let seoTitle = "";
+  let metaDescription = "";
+  const h2Texts = [];
+
+  for (let i = bodyStart; i < blocks.length; i++) {
+    const text = plainText(blocks[i]);
+    if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) bodyEnd = i;
+    const seoMatch = text.match(/^SEO Title Tag:\s*(.+)$/i);
+    if (seoMatch) seoTitle = seoMatch[1].trim();
+    const metaMatch = text.match(/^Meta Description:\s*(.+)$/i);
+    if (metaMatch) metaDescription = metaMatch[1].trim();
+    if (/^H Tags Used\b/i.test(text) && i + 1 < blocks.length) {
+      const next = blocks[i + 1];
+      if (/^<(ul|ol)\b/i.test(next)) {
+        // Format 1: <ul>/<ol> with <li> items
+        const liRe = /<li[^>]*>([\s\S]*?)<\/li>/g;
+        let li;
+        while ((li = liRe.exec(next)) !== null) {
+          const liText = plainText(li[1]);
+          const h2 = liText.match(/^H2:\s*(.+)$/i);
+          if (h2) h2Texts.push(h2[1].trim());
+        }
+      } else {
+        // Format 2: plain <p> blocks each containing one "Hn: ..." entry
+        for (let j = i + 1; j < blocks.length; j++) {
+          const t = plainText(blocks[j]);
+          if (!/^H[1-6]:\s*/i.test(t)) break;
+          const h2 = t.match(/^H2:\s*(.+)$/i);
+          if (h2) h2Texts.push(h2[1].trim());
+        }
+      }
+    }
+  }
+
+  const h2Lookup = new Map();
+  for (const t of h2Texts) h2Lookup.set(normalize(t), t);
+
+  // Heuristic fallbacks — only used when the doc has NO H Tags Used list at all.
+  // When the writer provides the list, we trust it exactly (their source of truth).
+  const useFallbacks = h2Lookup.size === 0;
+  const SECTION_LABELS = /^(introduction|intro|conclusion|summary|overview|faq|frequently asked questions|tl;?dr|about|final thoughts|wrap[- ]?up|key takeaways|takeaways|references|sources|notes|appendix|getting started)$/i;
+
+  const outBlocks = [];
+  for (let i = bodyStart; i < bodyEnd; i++) {
+    const block = blocks[i];
+    const m = block.match(/^<p>\s*<strong>([\s\S]+?)<\/strong>\s*<\/p>$/);
+    if (m) {
+      const inner = plainText(m[1]);
+      const stripped = inner.replace(/^\d+[.):]?\s+/, "");
+      const matchedH2 = h2Lookup.has(normalize(inner)) || h2Lookup.has(normalize(stripped));
+      let promote = matchedH2;
+      if (!promote && useFallbacks) {
+        const numberedPattern = /^\d+\.\s+\S/.test(inner);
+        const labelOnly = SECTION_LABELS.test(inner.replace(/[:.!?]+$/, "").trim());
+        promote = numberedPattern || labelOnly;
+      }
+      if (promote) {
+        if (outBlocks.length > 0) outBlocks.push("<p>&nbsp;</p>");
+        outBlocks.push(`<h2>${escapeHtmlForTag(inner)}</h2>`);
+        continue;
+      }
+    }
+    outBlocks.push(block.replace(/[\s ]+<\/li>/g, "</li>"));
+  }
+  // Strip Word "Editor" / Smart Lookup junk anchors — empty <a> tags with no href
+  // (e.g. <a id="_Int_xyz"></a>, <a id="_Hlk..."></a>). Real hyperlinks have href and are kept.
+  function stripWordJunkAnchors(h) {
+    return h.replace(/<a\b((?:(?!\bhref\s*=)[^>])*?)>([\s\S]*?)<\/a>/gi, '$2');
+  }
+  const bodyHtml = stripWordJunkAnchors(outBlocks.join("\n"));
+
+  // Date formatting
+  let formattedDate = dateText;
+  let dateMM = null, dateDD = null;
+  const dateFromName = filename.match(/^(\d{1,2})\.(\d{1,2})\b/);
+  if (/^\d{1,2}\.\d{1,2}$/.test(dateText)) {
+    const [mm, dd] = dateText.split(".").map(Number);
+    if (mm >= 1 && mm <= 12) {
+      dateMM = mm; dateDD = dd;
+      const year = new Date().getFullYear();
+      formattedDate = `${MONTHS[mm - 1]} ${dd}, ${year}`;
+    }
+  } else if (dateFromName) {
+    const mm = parseInt(dateFromName[1], 10);
+    const dd = parseInt(dateFromName[2], 10);
+    if (mm >= 1 && mm <= 12) {
+      dateMM = mm; dateDD = dd;
+      const year = new Date().getFullYear();
+      formattedDate = `${MONTHS[mm - 1]} ${dd}, ${year}`;
+    }
+  }
+
+  return {
+    date: formattedDate,
+    dateMM, dateDD,
+    title: titleText,
+    seoTitle,
+    metaDescription,
+    bodyHtml,
+    h2Count: h2Texts.length
+  };
+}
+
+/* ============================================================
+   PART 2 — Quality checks (trimmed; same logic as single-post tool)
+   ============================================================ */
+function checkFormat(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+  doc.querySelectorAll('img').forEach(img => {
+    if (!img.hasAttribute('alt')) {
+      const src = img.getAttribute('src') || '';
+      issues.push({
+        sev:'error', msg:'Image missing alt attribute', ctx: img.outerHTML,
+        fix:'Add alt="" or descriptive alt text.',
+        apply: (h) => {
+          if (!src) return h;
+          const srcEsc = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const re = new RegExp(`<img\\b([^>]*\\bsrc\\s*=\\s*["']?${srcEsc}["']?[^>]*?)(\\s*/?>)`, 'i');
+          return h.replace(re, (m, attrs, end) => /\balt\s*=/i.test(attrs) ? m : `<img${attrs} alt=""${end}`);
+        }
+      });
+    }
+    if (!img.hasAttribute('src') || !img.getAttribute('src').trim()) {
+      issues.push({sev:'error', msg:'Image missing src', ctx: img.outerHTML});
+    }
+  });
+
+  const headings = [...doc.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+  let lastLevel = 0, h1Count = 0;
+  headings.forEach(h => {
+    const level = parseInt(h.tagName[1], 10);
+    if (level === 1) h1Count++;
+    if (lastLevel && level > lastLevel + 1) {
+      issues.push({sev:'warn', msg:`Heading skips levels (H${lastLevel} → H${level})`, ctx: h.outerHTML});
+    }
+    if (!h.textContent.trim()) issues.push({sev:'error', msg:`Empty ${h.tagName}`, ctx: h.outerHTML});
+    lastLevel = level;
+  });
+  if (h1Count > 1) issues.push({sev:'warn', msg:`Multiple H1 tags (${h1Count}) — WordPress title becomes the H1.`});
+
+  doc.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href');
+    if (!href || !href.trim()) issues.push({sev:'warn', msg:'Link missing href', ctx: a.outerHTML});
+    else if (href === '#' || href === 'javascript:void(0)') issues.push({sev:'warn', msg:'Placeholder href', ctx: a.outerHTML});
+    if (!a.textContent.trim() && !a.querySelector('img[alt]')) {
+      issues.push({sev:'error', msg:'Link has no accessible text', ctx: a.outerHTML});
+    }
+  });
+
+  issues.push(...checkTagBalance(html));
+  return issues;
+}
+
+function checkTagBalance(html) {
+  const issues = [];
+  const voidEls = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+  const stack = [];
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/)?>/g;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    const fullTag = m[0];
+    const name = m[1].toLowerCase();
+    const isClose = fullTag.startsWith('</');
+    const selfClose = !!m[2] || voidEls.has(name);
+    if (isClose) {
+      if (stack.length === 0) issues.push({sev:'error', msg:`Unexpected </${name}>`, ctx: fullTag});
+      else if (stack[stack.length - 1].name !== name) {
+        const opener = stack[stack.length - 1];
+        issues.push({sev:'error', msg:`Mismatched tag — expected </${opener.name}> but got </${name}>`, ctx: `${opener.tag} … ${fullTag}`});
+        const idx = [...stack].reverse().findIndex(s => s.name === name);
+        if (idx !== -1) stack.length = stack.length - idx - 1;
+      } else stack.pop();
+    } else if (!selfClose) stack.push({name, tag: fullTag});
+  }
+  stack.forEach(s => issues.push({sev:'error', msg:`Unclosed <${s.name}>`, ctx: s.tag}));
+  return issues;
+}
+
+function checkConsistency(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+  doc.querySelectorAll('ul, ol').forEach(list => {
+    const items = [...list.children].filter(el => el.tagName === 'LI');
+    if (items.length < 3) return;
+    const endings = items.map(li => /[.!?]$/.test(li.textContent.replace(/[\s"'\)\]]+$/, '')) ? 'punct' : 'none');
+    const punctCount = endings.filter(e => e === 'punct').length;
+    if (punctCount > items.length / 2 && punctCount < items.length) {
+      items.forEach((li, idx) => {
+        if (endings[idx] === 'punct') return;
+        const fp = li.textContent.trim().slice(-40);
+        issues.push({
+          sev:'warn',
+          msg:`List item missing ending punctuation — ${punctCount}/${items.length} siblings end with a period.`,
+          ctx: li.outerHTML.length > 280 ? li.outerHTML.slice(0,280) + '…' : li.outerHTML,
+          apply: (h) => {
+            const liHtml = li.outerHTML;
+            if (h.includes(liHtml)) return h.replace(liHtml, liHtml.replace(/<\/li>\s*$/, '.</li>'));
+            const escFP = fp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return h.replace(new RegExp(`(${escFP})(\\s*</li>)`, 'i'), '$1.$2');
+          }
+        });
+      });
+    }
+  });
+
+  // Heading number prefix PUNCTUATION consistency
+  // Catches typos like "10 Maintain..." when others are "1.", "2.", ..., "9."
+  ['h1','h2','h3','h4'].forEach(tag => {
+    const headings = [...doc.querySelectorAll(tag)];
+    if (headings.length < 3) return;
+    const SEP_NAMES = { '.': 'period', ')': 'paren', ':': 'colon' };
+    const numbered = headings
+      .map(h => {
+        const text = h.textContent.trim();
+        const m = text.match(/^(\d+)([.):]|\s)/);
+        if (!m) return null;
+        const sepRaw = m[2];
+        const style = /\s/.test(sepRaw) ? 'space-only' : SEP_NAMES[sepRaw] || 'unknown';
+        return { h, text, num: m[1], sepRaw, style };
+      })
+      .filter(Boolean);
+    if (numbered.length < 3) return;
+    const counts = {};
+    numbered.forEach(n => counts[n.style] = (counts[n.style] || 0) + 1);
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const [dominantStyle, dominantCount] = sorted[0];
+    if (dominantCount === numbered.length) return;
+    if (dominantCount <= numbered.length / 2) return;
+    if (dominantStyle === 'space-only' || dominantStyle === 'unknown') return;
+    const dominantSep = dominantStyle === 'period' ? '.' : dominantStyle === 'paren' ? ')' : ':';
+    numbered.forEach(n => {
+      if (n.style === dominantStyle) return;
+      const visibleSep = n.style === 'space-only' ? '' : n.sepRaw;
+      issues.push({
+        sev: 'warn',
+        msg: `${tag.toUpperCase()} number prefix uses "${n.num}${visibleSep}" but ${dominantCount}/${numbered.length} other ${tag.toUpperCase()}s use "${dominantSep}" after the number.`,
+        ctx: n.h.outerHTML,
+        fix: `Change "${n.num}${visibleSep}" to "${n.num}${dominantSep}" to match the rest.`,
+        apply: (html) => {
+          const tagRe = new RegExp(`(<${tag}\\b[^>]*>)([\\s\\S]*?)(</${tag}>)`, 'gi');
+          return html.replace(tagRe, (full, open, inner, close) => {
+            const innerText = inner.replace(/<[^>]+>/g, '').trim();
+            if (innerText !== n.text) return full;
+            const fixed = inner.replace(/^(\s*(?:<[^>]+>\s*)*)(\d+)([.):]?)(\s+)/, (mAll, lead, num, sep, ws) => {
+              if (num !== n.num) return mAll;
+              return `${lead}${num}${dominantSep}${ws}`;
+            });
+            return `${open}${fixed}${close}`;
+          });
+        }
+      });
+    });
+  });
+
+  return issues;
+}
+
+function extractText(html) {
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+  doc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+  return doc.body.innerText || doc.body.textContent || '';
+}
+async function checkGrammar(text, language) {
+  if (!text.trim()) return { matches: [] };
+  const params = new URLSearchParams();
+  params.append('text', text);
+  params.append('language', language);
+  const res = await fetch('https://api.languagetool.org/v2/check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: params.toString()
+  });
+  if (!res.ok) throw new Error(`LanguageTool: HTTP ${res.status}`);
+  return await res.json();
+}
+
+/* ============================================================
+   PART 3 — ZIP unpacking + posts pairing
+   ============================================================ */
+async function readZip(file) {
+  const zip = await JSZip.loadAsync(file);
+  const entries = [];
+  zip.forEach((relPath, zipObj) => {
+    if (zipObj.dir) return;
+    if (relPath.startsWith("__MACOSX/") || /\/\._/.test(relPath) || /(^|\/)~\$/.test(relPath)) return;
+    entries.push({ path: relPath, obj: zipObj });
+  });
+  return entries;
+}
+
+function basename(path) {
+  const i = path.lastIndexOf("/");
+  return i >= 0 ? path.slice(i + 1) : path;
+}
+function dirname(path) {
+  const i = path.lastIndexOf("/");
+  return i >= 0 ? path.slice(0, i) : "";
+}
+function ext(path) {
+  const m = basename(path).match(/\.([a-z0-9]+)$/i);
+  return m ? m[1].toLowerCase() : "";
+}
+function dateKeyFromName(name) {
+  const m = basename(name).match(/(\d{1,2})\.(\d{1,2})/);
+  if (!m) return null;
+  return `${parseInt(m[1], 10)}.${parseInt(m[2], 10)}`;
+}
+
+/**
+ * Pair docx files with image files using:
+ *   1. Same folder (preferred)
+ *   2. Matching date prefix in filename (fallback for flat zips)
+ */
+function pairFiles(entries) {
+  const docx = entries.filter(e => ext(e.path) === "docx" && !basename(e.path).startsWith("~$"));
+  const images = entries.filter(e => ["jpg","jpeg","png","gif","webp"].includes(ext(e.path)));
+
+  const pairs = [];
+  const usedImg = new Set();
+
+  // Strategy 1: same folder
+  for (const d of docx) {
+    const folder = dirname(d.path);
+    const candidates = images.filter(i => !usedImg.has(i.path) && dirname(i.path) === folder);
+    if (candidates.length === 1) {
+      pairs.push({ docx: d, image: candidates[0] });
+      usedImg.add(candidates[0].path);
+    } else if (candidates.length > 1) {
+      // Pick the largest image (likely the featured image, not a logo)
+      let best = candidates[0];
+      for (const c of candidates) if (c.obj._data?.uncompressedSize > (best.obj._data?.uncompressedSize || 0)) best = c;
+      pairs.push({ docx: d, image: best });
+      usedImg.add(best.path);
+    } else {
+      pairs.push({ docx: d, image: null });
+    }
+  }
+
+  // Strategy 2: for any docx without an image, match by date prefix in basename
+  for (const pair of pairs) {
+    if (pair.image) continue;
+    const key = dateKeyFromName(pair.docx.path);
+    if (!key) continue;
+    const candidate = images.find(i => !usedImg.has(i.path) && dateKeyFromName(i.path) === key);
+    if (candidate) {
+      pair.image = candidate;
+      usedImg.add(candidate.path);
+    }
+  }
+
+  return pairs;
+}
+
+/* ============================================================
+   PART 4 — Site / topic detection + UI wiring
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const drop = $("drop");
+const fileInput = $("file");
+const statusEl = $("status");
+const batchMeta = $("batchMeta");
+const queueEl = $("queue");
+const queueList = $("queueList");
+const queueLabel = $("queueLabel");
+const siteSelect = $("siteSelect");
+const topicSelect = $("topicSelect");
+const catSummary = $("catSummary");
+
+let currentBatch = null; // { posts: [...], site, topic }
+
+function setStatus(msg, kind) {
+  statusEl.innerHTML = msg;
+  statusEl.className = "status show" + (kind ? " " + kind : "");
+}
+
+function populateSiteSelect() {
+  siteSelect.innerHTML = "";
+  for (const s of SITES) {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    siteSelect.appendChild(opt);
+  }
+}
+function populateTopicSelect(siteId) {
+  const site = SITES.find(s => s.id === siteId);
+  topicSelect.innerHTML = "";
+  if (!site) return;
+  for (const t of site.topics) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name;
+    topicSelect.appendChild(opt);
+  }
+  updateCatSummary();
+}
+function updateCatSummary() {
+  const site = SITES.find(s => s.id === siteSelect.value);
+  if (!site) { catSummary.textContent = ""; return; }
+  const topic = site.topics.find(t => t.id === topicSelect.value);
+  if (!topic) { catSummary.textContent = ""; return; }
+  catSummary.innerHTML = `Will post to <span class="cat-chip">${escapeHtml(topic.category)}</span> on <strong>${escapeHtml(site.name)}</strong>`;
+}
+siteSelect.addEventListener("change", () => populateTopicSelect(siteSelect.value));
+topicSelect.addEventListener("change", updateCatSummary);
+
+function detectSiteAndTopic(zipName, entries) {
+  const haystack = (zipName + " " + entries.map(e => e.path).join(" ")).toLowerCase();
+  let bestSite = null, bestSiteScore = 0;
+  for (const s of SITES) {
+    let score = 0;
+    for (const a of s.aliases) if (haystack.includes(a.toLowerCase())) score += 5;
+    for (const t of s.topics) if (haystack.includes(t.name.toLowerCase())) score += 1;
+    if (score > bestSiteScore) { bestSiteScore = score; bestSite = s; }
+  }
+  let bestTopic = null;
+  if (bestSite) {
+    let bestTopicScore = 0;
+    for (const t of bestSite.topics) {
+      const score = haystack.includes(t.name.toLowerCase()) ? 5 : 0;
+      if (score > bestTopicScore) { bestTopicScore = score; bestTopic = t; }
+    }
+  }
+  return { site: bestSite, topic: bestTopic };
+}
+
+populateSiteSelect();
+populateTopicSelect(siteSelect.value);
+
+drop.addEventListener("click", (e) => { if (e.target.tagName !== "INPUT") fileInput.click(); });
+fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+["dragenter","dragover"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave","drop"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!/\.zip$/i.test(file.name)) {
+    setStatus("Please drop a .zip file.", "err");
+    return;
+  }
+  setStatus(`<span class="spinner"></span>Reading ${escapeHtml(file.name)}…`);
+  try {
+    const entries = await readZip(file);
+    const pairs = pairFiles(entries);
+    if (pairs.length === 0) {
+      setStatus("No .docx files found in this ZIP.", "err");
+      return;
+    }
+
+    // Auto-detect site + topic
+    const detected = detectSiteAndTopic(file.name, entries);
+    if (detected.site) {
+      siteSelect.value = detected.site.id;
+      populateTopicSelect(detected.site.id);
+      if (detected.topic) topicSelect.value = detected.topic.id;
+      updateCatSummary();
+    }
+    batchMeta.classList.add("show");
+
+    setStatus(`<span class="spinner"></span>Parsing ${pairs.length} post${pairs.length === 1 ? "" : "s"}…`);
+
+    const posts = [];
+    for (const pair of pairs) {
+      const docxBuf = await pair.docx.obj.async("arraybuffer");
+      const conv = await mammoth.convertToHtml({ arrayBuffer: docxBuf });
+      const parsed = parseFromHtml(conv.value, basename(pair.docx.path));
+      let imageDataUrl = null, imageName = null, imageBytes = null;
+      if (pair.image) {
+        imageBytes = await pair.image.obj.async("blob");
+        imageDataUrl = URL.createObjectURL(imageBytes);
+        imageName = basename(pair.image.path);
+      }
+      posts.push({
+        id: "post-" + posts.length,
+        path: pair.docx.path,
+        docxName: basename(pair.docx.path),
+        imageName,
+        imageDataUrl,
+        imageBytes,
+        parsed,
+        issues: null,
+        sortKey: parsed.dateMM != null && parsed.dateDD != null
+          ? parsed.dateMM * 100 + parsed.dateDD
+          : 9999
+      });
+    }
+    posts.sort((a, b) => a.sortKey - b.sortKey);
+
+    currentBatch = { zipName: file.name, posts };
+    renderQueue();
+    setStatus(`Parsed ${pairs.length} post${pairs.length === 1 ? "" : "s"} from <strong>${escapeHtml(file.name)}</strong>.`, "ok");
+  } catch (err) {
+    console.error(err);
+    setStatus("Could not read ZIP: " + escapeHtml(err.message || String(err)), "err");
+  }
+}
+
+/* ============================================================
+   PART 5 — Queue / card rendering
+   ============================================================ */
+function renderQueue() {
+  if (!currentBatch) {
+    queueEl.classList.remove("show");
+    return;
+  }
+  queueLabel.textContent = `${currentBatch.posts.length} Post${currentBatch.posts.length === 1 ? "" : "s"} from ${currentBatch.zipName}`;
+  queueList.innerHTML = "";
+  for (const p of currentBatch.posts) {
+    queueList.appendChild(renderCard(p));
+  }
+  queueEl.classList.add("show");
+}
+
+function renderCard(post) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.id = post.id;
+
+  const summary = document.createElement("div");
+  summary.className = "card-summary";
+
+  const thumb = document.createElement("div");
+  thumb.className = "thumb";
+  if (post.imageDataUrl) {
+    thumb.style.backgroundImage = `url("${post.imageDataUrl}")`;
+  } else {
+    thumb.textContent = "no image";
+  }
+
+  const info = document.createElement("div");
+  info.className = "card-info";
+  info.innerHTML = `
+    <div class="date">${escapeHtml(post.parsed.date || "(no date)")}</div>
+    <div class="title">${escapeHtml(post.parsed.title || post.docxName)}</div>
+    <div class="meta-row">
+      <span class="badge dim">${escapeHtml(post.docxName)}</span>
+      ${post.imageName ? `<span class="badge dim">🖼 ${escapeHtml(post.imageName)}</span>` : `<span class="badge warn">no image paired</span>`}
+      <span class="badge dim">H2: ${post.parsed.h2Count}</span>
+      <span class="badge dim issue-summary" id="${post.id}-summary">not checked</span>
+    </div>
+  `;
+
+  const chev = document.createElement("div");
+  chev.className = "chev";
+  chev.textContent = "▶";
+
+  summary.appendChild(thumb);
+  summary.appendChild(info);
+  summary.appendChild(chev);
+
+  summary.addEventListener("click", () => {
+    card.classList.toggle("open");
+    if (card.classList.contains("open") && !card._bodyRendered) {
+      renderCardBody(card, post);
+      card._bodyRendered = true;
+    }
+  });
+
+  card.appendChild(summary);
+
+  const body = document.createElement("div");
+  body.className = "card-body";
+  card.appendChild(body);
+  return card;
+}
+
+function renderCardBody(card, post) {
+  const body = card.querySelector(".card-body");
+  body.innerHTML = `
+    <div class="field f-date">
+      <div class="field-head">
+        <span class="label"><span class="icon">📅</span>Date</span>
+      </div>
+      <div class="field-body"><input value="${escapeHtml(post.parsed.date || "")}" readonly></div>
+    </div>
+
+    <div class="field f-title">
+      <div class="field-head">
+        <span class="label"><span class="icon">📝</span>WordPress Title</span>
+        <button class="copy-btn" data-copy-text>Copy</button>
+      </div>
+      <div class="field-body"><input class="src-title" value="${escapeHtml(post.parsed.title || "")}" readonly></div>
+    </div>
+
+    <div class="row-2col">
+      <div class="field f-seo">
+        <div class="field-head">
+          <span class="label"><span class="icon">🔍</span>SEO Title Tag</span>
+          <button class="copy-btn" data-copy-text>Copy</button>
+        </div>
+        <div class="field-body"><input class="src-seo" value="${escapeHtml(post.parsed.seoTitle || "")}" readonly></div>
+      </div>
+      <div class="field f-meta">
+        <div class="field-head">
+          <span class="label"><span class="icon">💬</span>Meta Description</span>
+          <button class="copy-btn" data-copy-text>Copy</button>
+        </div>
+        <div class="field-body"><textarea class="src-meta" readonly>${escapeHtml(post.parsed.metaDescription || "")}</textarea></div>
+      </div>
+    </div>
+
+    <div class="field f-html">
+      <div class="field-head">
+        <span class="label"><span class="icon">🧩</span>HTML Content <span class="hint">– editable</span></span>
+        <div style="display:flex; gap:6px;">
+          <button class="ghost-btn" data-recheck>Re-check</button>
+          <button class="copy-btn" data-copy-text>Copy</button>
+        </div>
+      </div>
+      <div class="field-body"><textarea class="src-html html"></textarea></div>
+    </div>
+
+    <div class="field f-check">
+      <div class="field-head">
+        <span class="label"><span class="icon">✅</span>Quality Check</span>
+        <button class="ghost-btn" data-runcheck>Run check</button>
+      </div>
+      <div class="issues-body"><div class="empty">Click "Run check" to scan this post.</div></div>
+    </div>
+
+    <details class="preview-block">
+      <summary>Live preview</summary>
+      <div class="preview-body"></div>
+    </details>
+  `;
+
+  const htmlArea = body.querySelector(".src-html");
+  htmlArea.value = post.parsed.bodyHtml || "";
+  const previewEl = body.querySelector(".preview-body");
+  const syncPreview = () => { previewEl.innerHTML = htmlArea.value; };
+  syncPreview();
+  htmlArea.addEventListener("input", () => {
+    syncPreview();
+    post.parsed.bodyHtml = htmlArea.value; // keep model in sync
+  });
+
+  // Copy buttons — find the matching input/textarea in the same field
+  body.querySelectorAll(".copy-btn[data-copy-text]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const field = btn.closest(".field");
+      const el = field.querySelector("input, textarea");
+      if (!el) return;
+      try {
+        await navigator.clipboard.writeText(el.value);
+        const orig = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1200);
+      } catch {
+        el.select(); document.execCommand("copy");
+      }
+    });
+  });
+
+  // Quality check buttons
+  const runCheckBtn = body.querySelector("[data-runcheck]");
+  const recheckBtn = body.querySelector("[data-recheck]");
+  const issuesContainer = body.querySelector(".f-check .issues-body");
+
+  async function doCheck() {
+    runCheckBtn.disabled = true;
+    if (recheckBtn) recheckBtn.disabled = true;
+    issuesContainer.innerHTML = '<div class="empty"><span class="spinner"></span>Running checks…</div>';
+    const html = htmlArea.value;
+    const fmtIssues = checkFormat(html);
+    const consistencyIssues = checkConsistency(html);
+    let grammarIssues = [];
+    let grammarError = null;
+    try {
+      const text = extractText(html);
+      const res = await checkGrammar(text, "en-US");
+      grammarIssues = (res.matches || []).map(m => ({
+        sev: m.rule?.issueType === 'misspelling' ? 'error' : 'warn',
+        msg: m.message,
+        ctx: m.context?.text
+          ? m.context.text.slice(0, m.context.offset) + '«' +
+            m.context.text.substr(m.context.offset, m.context.length) + '»' +
+            m.context.text.slice(m.context.offset + m.context.length)
+          : '',
+        fix: (m.replacements || []).slice(0, 3).map(r => r.value).join(', ')
+      }));
+    } catch (e) { grammarError = e.message; }
+
+    const all = [...fmtIssues, ...consistencyIssues, ...grammarIssues];
+    post.issues = { fmt: fmtIssues, consistency: consistencyIssues, grammar: grammarIssues, grammarError, all };
+    renderIssues(issuesContainer, post, htmlArea, syncPreview);
+    updateCardBadge(post);
+    runCheckBtn.disabled = false;
+    if (recheckBtn) recheckBtn.disabled = false;
+    runCheckBtn.textContent = "Re-run";
+  }
+  runCheckBtn.addEventListener("click", doCheck);
+  if (recheckBtn) recheckBtn.addEventListener("click", doCheck);
+}
+
+function renderIssues(container, post, htmlArea, syncPreview) {
+  const { fmt, consistency, grammar, grammarError, all } = post.issues;
+  const total = all.length;
+  if (total === 0 && !grammarError) {
+    container.innerHTML = `<div class="group-title">All Checks <span class="badge ok">clean ✓</span></div><div class="empty">No issues found.</div>`;
+    return;
+  }
+  let h = "";
+
+  function fmtBadges(errs, warns, count) {
+    let s = "";
+    const e = errs.length, w = warns.length;
+    if (e) s += `<span class="badge error">${e} error${e===1?"":"s"}</span>`;
+    if (w) s += `<span class="badge warn">${w} warning${w===1?"":"s"}</span>`;
+    if (!count) s += `<span class="badge ok">clean</span>`;
+    return s;
+  }
+
+  function renderIssue(i, idx) {
+    let s = `<div class="issue ${i.sev}" data-issue-idx="${idx}">`;
+    s += `<div class="msg">${escapeHtml(i.msg)}</div>`;
+    if (i.ctx) {
+      let ctxHtml = escapeHtml(i.ctx).replace('«', `<mark style="background:rgba(255,179,71,.3);padding:0 2px;border-radius:2px;">`).replace('»', '</mark>');
+      s += `<div class="ctx">${ctxHtml}</div>`;
+    }
+    if (i.fix) s += `<div class="fix">→ ${escapeHtml(i.fix)}</div>`;
+    if (typeof i.apply === 'function') s += `<button class="fix-btn" data-fix-idx="${idx}">Apply Fix</button>`;
+    s += `</div>`;
+    return s;
+  }
+
+  // Format
+  const fmtErr = fmt.filter(i => i.sev === 'error');
+  const fmtWarn = fmt.filter(i => i.sev === 'warn');
+  h += `<div class="group-title">Format & Accessibility ${fmtBadges(fmtErr, fmtWarn, fmt.length)}</div>`;
+  if (fmt.length) fmt.forEach(i => h += renderIssue(i, all.indexOf(i)));
+  else h += `<div class="empty">No format issues.</div>`;
+
+  // Consistency
+  const conErr = consistency.filter(i => i.sev === 'error');
+  const conWarn = consistency.filter(i => i.sev === 'warn');
+  h += `<div class="group-title">Consistency ${fmtBadges(conErr, conWarn, consistency.length)}</div>`;
+  if (consistency.length) consistency.forEach(i => h += renderIssue(i, all.indexOf(i)));
+  else h += `<div class="empty">No consistency issues.</div>`;
+
+  // Grammar
+  const grErr = grammar.filter(i => i.sev === 'error');
+  const grWarn = grammar.filter(i => i.sev === 'warn');
+  h += `<div class="group-title">Grammar & Spelling ${grammarError ? '<span class="badge error">api error</span>' : fmtBadges(grErr, grWarn, grammar.length)}</div>`;
+  if (grammarError) h += `<div class="issue error"><div class="msg">LanguageTool error</div><div class="ctx">${escapeHtml(grammarError)}</div></div>`;
+  else if (grammar.length) grammar.forEach(i => h += renderIssue(i, all.indexOf(i)));
+  else h += `<div class="empty">No grammar issues.</div>`;
+
+  container.innerHTML = h;
+
+  // Wire fix buttons
+  container.querySelectorAll('.fix-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.fixIdx;
+      const issue = all[idx];
+      if (!issue || typeof issue.apply !== 'function') return;
+      const before = htmlArea.value;
+      const after = issue.apply(before);
+      if (after === before) { btn.textContent = "No change"; btn.disabled = true; return; }
+      htmlArea.value = after;
+      post.parsed.bodyHtml = after;
+      syncPreview();
+      btn.closest('.issue').classList.add('applied');
+      btn.textContent = 'Applied ✓';
+      btn.disabled = true;
+    });
+  });
+}
+
+function updateCardBadge(post) {
+  const el = document.getElementById(post.id + "-summary");
+  if (!el || !post.issues) return;
+  const card = document.getElementById(post.id);
+  const errs = post.issues.all.filter(i => i.sev === 'error').length;
+  const warns = post.issues.all.filter(i => i.sev === 'warn').length;
+  card.classList.remove("clean","has-warnings","has-errors");
+  if (errs) {
+    el.className = "badge error";
+    el.textContent = `${errs} error${errs===1?"":"s"}${warns ? ` · ${warns} warn` : ""}`;
+    card.classList.add("has-errors");
+  } else if (warns) {
+    el.className = "badge warn";
+    el.textContent = `${warns} warning${warns===1?"":"s"}`;
+    card.classList.add("has-warnings");
+  } else {
+    el.className = "badge ok";
+    el.textContent = "clean ✓";
+    card.classList.add("clean");
+  }
+}
+
+/* Bulk actions */
+$("expandAllBtn").addEventListener("click", () => {
+  const cards = queueList.querySelectorAll(".card");
+  const anyClosed = [...cards].some(c => !c.classList.contains("open"));
+  cards.forEach(card => {
+    if (anyClosed) {
+      card.classList.add("open");
+      if (!card._bodyRendered) {
+        const post = currentBatch.posts.find(p => p.id === card.id);
+        if (post) { renderCardBody(card, post); card._bodyRendered = true; }
+      }
+    } else {
+      card.classList.remove("open");
+    }
+  });
+  $("expandAllBtn").textContent = anyClosed ? "Collapse all" : "Expand all";
+});
+
+$("checkAllBtn").addEventListener("click", async () => {
+  if (!currentBatch) return;
+  const btn = $("checkAllBtn");
+  btn.disabled = true;
+  btn.textContent = "Checking…";
+  for (let i = 0; i < currentBatch.posts.length; i++) {
+    const post = currentBatch.posts[i];
+    btn.textContent = `Checking ${i + 1}/${currentBatch.posts.length}…`;
+    const card = document.getElementById(post.id);
+    if (!card._bodyRendered) {
+      renderCardBody(card, post);
+      card._bodyRendered = true;
+    }
+    const runBtn = card.querySelector("[data-runcheck]");
+    if (runBtn) {
+      runBtn.click();
+      // Wait for grammar check to finish — poll until issues populate
+      await new Promise(r => setTimeout(r, 100));
+      while (runBtn.disabled) await new Promise(r => setTimeout(r, 200));
+    }
+    // Brief pause between posts to be polite to the public LT API
+    await new Promise(r => setTimeout(r, 600));
+  }
+  btn.disabled = false;
+  btn.textContent = "Run Quality Check on All";
+});
+</script>
+</body>
+</html>
