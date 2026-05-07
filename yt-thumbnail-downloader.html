@@ -15,6 +15,20 @@
   }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .subtitle { color: #8a93a3; margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #8a93a3;
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #262a33;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    transition: color .15s, border-color .15s;
+  }
+  .back-link:hover { color: #e6e6e6; border-color: #5b8def; }
   .card {
     background: #181b22;
     border: 1px solid #262a33;
@@ -74,6 +88,32 @@
   .item .filename { font-size: 11px; color: #6cd17b; margin-bottom: 10px; word-break: break-all; }
   .item button { margin: 0; padding: 6px 12px; font-size: 12px; }
   .item .download-btn { width: 100%; }
+  .item .send-btn {
+    width: 100%;
+    background: #8b5cf6;
+    margin-bottom: 6px;
+  }
+  .item .send-btn:hover { background: #7c4ce0; }
+  .item .send-btn:disabled {
+    background: #2a2f3a;
+    color: #6a7180;
+    cursor: not-allowed;
+  }
+  .ext-banner {
+    background: #181b22;
+    border: 1px solid #5b8def;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #b8bdc8;
+    display: none;
+  }
+  .ext-banner.show { display: block; }
+  .ext-banner.installed {
+    border-color: #2d7a3e;
+    color: #6cd17b;
+  }
   .industry-group { margin-top: 24px; }
   .industry-header {
     display: flex;
@@ -178,8 +218,13 @@
 </head>
 <body>
 
+<a href="./index.html" class="back-link">&larr; All Tools</a>
 <h1>YT Thumbnail Downloader</h1>
 <p class="subtitle">Paste YouTube URL + video title → downloads <code>{Title}-thumb.jpg</code> at the highest quality available. Built for the RRM Video Posting SOP.</p>
+
+<div id="extBanner" class="ext-banner">
+  <strong>Tip:</strong> Install the <em>RRM WP Helper</em> Chrome extension to enable the <strong>Send to RRM@home</strong> button on each card. See <a href="./extension/" style="color:#5b8def">extension folder</a> in the repo.
+</div>
 
 <div class="tabs">
   <button id="tab-bulk" class="active" onclick="setMode('bulk')">Bulk (paste email)</button>
@@ -355,18 +400,31 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
         <pre>${escapeHtml(entry.content)}</pre>
       </div>
     ` : '';
+    const metaDesc = entry.content ? toMetaDescription(entry.content) : '';
+    const metaBlock = metaDesc ? `
+      <div class="content-block">
+        <div class="head">
+          <span>SEO Meta Description</span>
+          <button data-copy="${escapeHtml(metaDesc)}">Copy</button>
+        </div>
+        <pre>${escapeHtml(metaDesc)}</pre>
+      </div>
+    ` : '';
     div.innerHTML = `
       <img src="${entry.thumbUrl}" alt="thumbnail">
       <div class="title">${escapeHtml(entry.title)}</div>
       <div class="meta">${escapeHtml(entry.quality)}${entry.date ? ' &middot; Posting: ' + escapeHtml(entry.date) : ''}</div>
-      ${copyRow('YT ID', entry.id)}
-      ${entry.date ? copyRow('Date', entry.date) : ''}
       ${copyRow('Title', entry.title)}
       ${contentBlock}
+      ${metaBlock}
+      ${copyRow('YT ID', entry.id)}
       <div class="filename">${escapeHtml(entry.filename)}</div>
+      <button class="send-btn" data-target="rrmathome" ${extDetected ? '' : 'disabled title="Install the RRM WP Helper extension to enable"'}>Send to RRM@home</button>
       <button class="download-btn">Download Thumbnail</button>
     `;
     div.querySelector('.download-btn').onclick = () => downloadEntry(entry);
+    const sendBtn = div.querySelector('.send-btn');
+    if (sendBtn) sendBtn.onclick = () => sendToWp(entry, sendBtn.dataset.target);
     attachCopyHandlers(div);
     target.appendChild(div);
     bumpGroupCount(entry.industry || 'Ungrouped');
@@ -396,6 +454,62 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
   }
 
   let currentEntries = [];
+
+  // ---- Extension detection ----
+  // The RRM WP Helper extension content script announces itself via:
+  //   - a custom 'rrm-ext-ready' event
+  //   - a <meta name="rrm-ext-installed"> tag
+  let extDetected = !!document.querySelector('meta[name="rrm-ext-installed"]');
+  function refreshExtBanner() {
+    const banner = document.getElementById('extBanner');
+    if (!banner) return;
+    if (extDetected) {
+      banner.classList.add('show', 'installed');
+      banner.innerHTML = '<strong>RRM WP Helper detected.</strong> Use <em>Send to RRM@home</em> on any card to prefill a new post in the WordPress editor.';
+    } else {
+      banner.classList.add('show');
+      banner.classList.remove('installed');
+    }
+    // Toggle existing send buttons
+    document.querySelectorAll('.send-btn').forEach(b => {
+      if (extDetected) {
+        b.disabled = false;
+        b.removeAttribute('title');
+      } else {
+        b.disabled = true;
+        b.title = 'Install the RRM WP Helper extension to enable';
+      }
+    });
+  }
+  window.addEventListener('rrm-ext-ready', () => {
+    extDetected = true;
+    refreshExtBanner();
+  });
+  // Also poll briefly on load (the extension's content script runs at document_idle).
+  let pollTries = 0;
+  const pollExt = setInterval(() => {
+    if (document.querySelector('meta[name="rrm-ext-installed"]')) {
+      extDetected = true;
+      refreshExtBanner();
+      clearInterval(pollExt);
+    } else if (++pollTries > 20) {
+      clearInterval(pollExt);
+      refreshExtBanner();
+    }
+  }, 200);
+
+  function sendToWp(entry, target) {
+    const payload = {
+      title: entry.title,
+      content: entry.content || '',
+      metaDesc: entry.content ? toMetaDescription(entry.content) : '',
+      ytId: entry.id,
+      author: 'Welton Hong',
+      thumbUrl: entry.thumbUrl,
+      filename: entry.filename
+    };
+    window.postMessage({ type: 'RRM_SEND_TO_WP', target, payload }, '*');
+  }
 
   async function processSingle() {
     const errEl = document.getElementById('single-err');
@@ -434,8 +548,10 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
       const ln = allLines[i].trim();
       if (!ln) continue;
       if (/^(content link|date of posting|video title|video link|content)\s*:/i.test(ln)) continue;
-      // Stop if we hit the previous section's content (a Video Link line, etc.)
-      // — those should never count as an industry header.
+      // Explicit "Industry: X" tag wins.
+      const industryM = ln.match(/^industry\s*:\s*(.+)$/i);
+      if (industryM) return industryM[1].trim();
+      // Otherwise treat the line itself as the header (fallback for older email format).
       const cleaned = ln.replace(/[:\-–—]+\s*$/, '').replace(/^[#*\s]+/, '').trim();
       if (cleaned.length > 0 && cleaned.length < 60) return cleaned;
     }
@@ -477,6 +593,16 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     return sections;
   }
 
+  // Flatten multi-paragraph content into a single line for SEO meta description.
+  // Collapses all whitespace (including line breaks) to single spaces and ensures
+  // exactly one space after sentence-ending punctuation.
+  function toMetaDescription(text) {
+    return text
+      .replace(/\s+/g, ' ')
+      .replace(/([.!?])([A-Za-z0-9])/g, '$1 $2')
+      .trim();
+  }
+
   // Strip hashtags per SOP. Removes inline #tags and trims trailing empty lines.
   function stripHashtags(text) {
     return text
@@ -499,7 +625,7 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     let collectingContent = false;
     let contentLines = [];
 
-    const labelRe = /^(destination link|content link|date of posting|video title|video link|content)\s*:/i;
+    const labelRe = /^(industry|destination link|content link|date of posting|video title|video link|content)\s*:/i;
 
     function commit() {
       if (pendingTitle && pendingLink) {

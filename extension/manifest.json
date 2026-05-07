@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "RRM WP Helper",
+  "version": "0.1.0",
+  "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://pollrrm.github.io/*",
+    "https://www.rrmathome.com/*",
+    "https://rrmathome.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pollrrm.github.io/*",
+        "file:///*"
+      ],
+      "js": ["content-tool.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.rrmathome.com/wp-admin/post-new.php*",
+        "https://rrmathome.com/wp-admin/post-new.php*",
+        "https://www.rrmathome.com/wp-admin/post.php*",
+        "https://rrmathome.com/wp-admin/post.php*"
+      ],
+      "js": ["content-wp.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
