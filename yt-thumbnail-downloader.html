@@ -410,6 +410,18 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
         <pre>${escapeHtml(metaDesc)}</pre>
       </div>
     ` : '';
+    // Build the per-industry Send button. Supported industries get a real
+    // target; unsupported ones get a permanently-disabled button explaining why.
+    const ind = getTargetForIndustry(entry.industry);
+    let sendBtnHtml;
+    if (ind) {
+      const enabled = extDetected;
+      sendBtnHtml = `<button class="send-btn" data-supported="1" data-target="${ind.target}" ${enabled ? '' : 'disabled title="Install the RRM WP Helper extension to enable"'}>Send to ${escapeHtml(ind.label)}</button>`;
+    } else {
+      const ind_label = entry.industry ? escapeHtml(entry.industry) : 'WP';
+      sendBtnHtml = `<button class="send-btn" disabled title="${ind_label} not yet wired up — coming soon">Send to ${ind_label}</button>`;
+    }
+
     div.innerHTML = `
       <img src="${entry.thumbUrl}" alt="thumbnail">
       <div class="title">${escapeHtml(entry.title)}</div>
@@ -419,12 +431,14 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
       ${metaBlock}
       ${copyRow('YT ID', entry.id)}
       <div class="filename">${escapeHtml(entry.filename)}</div>
-      <button class="send-btn" data-target="rrmathome" ${extDetected ? '' : 'disabled title="Install the RRM WP Helper extension to enable"'}>Send to RRM@home</button>
+      ${sendBtnHtml}
       <button class="download-btn">Download Thumbnail</button>
     `;
     div.querySelector('.download-btn').onclick = () => downloadEntry(entry);
     const sendBtn = div.querySelector('.send-btn');
-    if (sendBtn) sendBtn.onclick = () => sendToWp(entry, sendBtn.dataset.target);
+    if (sendBtn && sendBtn.dataset.supported === '1') {
+      sendBtn.onclick = () => sendToWp(entry, sendBtn.dataset.target);
+    }
     attachCopyHandlers(div);
     target.appendChild(div);
     bumpGroupCount(entry.industry || 'Ungrouped');
@@ -455,6 +469,22 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
 
   let currentEntries = [];
 
+  // ---- Industry → WP target mapping ----
+  // Each card's "Send to ..." button is built from this lookup based on the
+  // entry's industry. Entries whose industry isn't here render the button
+  // permanently disabled with a tooltip.
+  const INDUSTRY_TARGETS = {
+    'home improvement': { target: 'rrmathome', label: 'RRM@home' },
+    'home care':        { target: 'scmm',      label: 'SCMM' }
+    // Future:
+    // 'funeral homes':  { target: 'rrm',     label: 'RRM' },
+    // 'hospice':        { target: 'hospice', label: 'Hospice' }
+  };
+  function getTargetForIndustry(industry) {
+    if (!industry) return null;
+    return INDUSTRY_TARGETS[industry.trim().toLowerCase()] || null;
+  }
+
   // ---- Extension detection ----
   // The RRM WP Helper extension content script announces itself via:
   //   - a custom 'rrm-ext-ready' event
@@ -465,13 +495,15 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     if (!banner) return;
     if (extDetected) {
       banner.classList.add('show', 'installed');
-      banner.innerHTML = '<strong>RRM WP Helper detected.</strong> Use <em>Send to RRM@home</em> on any card to prefill a new post in the WordPress editor.';
+      banner.innerHTML = '<strong>RRM WP Helper detected.</strong> Use the <em>Send to ...</em> button on any card to prefill a new post in the matching site\'s WordPress editor.';
     } else {
       banner.classList.add('show');
       banner.classList.remove('installed');
     }
-    // Toggle existing send buttons
+    // Only enable buttons that have a supported target. Unsupported industries
+    // stay disabled regardless of extension state.
     document.querySelectorAll('.send-btn').forEach(b => {
+      if (b.dataset.supported !== '1') return;
       if (extDetected) {
         b.disabled = false;
         b.removeAttribute('title');

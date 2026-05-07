@@ -4,8 +4,9 @@
 // WordPress new-post page in a new tab.
 
 const TARGET_URLS = {
-  rrmathome: 'https://www.rrmathome.com/wp-admin/post-new.php'
-  // Future sites: ringringmarketing, seniorcaremarketingmax, hospice, etc.
+  rrmathome: 'https://www.rrmathome.com/wp-admin/post-new.php',
+  scmm:      'https://www.seniorcaremarketingmax.com/wp-admin/post-new.php'
+  // Future sites: ringringmarketing (Funeral), hospice
 };
 
 // Announce extension presence so the page can light up its "Send to WP" buttons.

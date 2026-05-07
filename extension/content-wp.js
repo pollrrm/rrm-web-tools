@@ -35,14 +35,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ---- Core fill logic — drives a step-by-step progress panel for visibility ----
+// Order optimized so fast fields finish first (instant feedback) and the slow,
+// async-mounted editors (Yoast Draft.js + TinyMCE) run last. Only ordering
+// constraint: Videos category MUST be set before ACF YouTube ID, since ACF's
+// location rules only render the field once Videos is checked.
 async function fillPost(p) {
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
-  if (p.content)  ui.addStep('content',  'Content (TinyMCE)');
-  if (p.metaDesc) ui.addStep('meta',     'Meta description (Yoast)');
   ui.addStep('category', 'Videos category');
-  if (p.ytId)    ui.addStep('acf',      'YouTube ID (ACF)');
-  if (p.author)  ui.addStep('author',   'Author');
+  if (p.ytId)     ui.addStep('acf',     'YouTube ID (ACF)');
+  if (p.author)   ui.addStep('author',  'Author');
+  if (p.metaDesc) ui.addStep('meta',    'Meta description (Yoast)');
+  if (p.content)  ui.addStep('content', 'Content (TinyMCE)');
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -53,7 +57,7 @@ async function fillPost(p) {
     return { error: 'not-on-post-page' };
   }
 
-  // 1. Title
+  // 1. Title (instant)
   const titleEl = document.getElementById('title');
   if (titleEl && p.title) {
     setNativeValue(titleEl, p.title);
@@ -63,23 +67,7 @@ async function fillPost(p) {
     ui.update('title', 'skipped');
   }
 
-  // 2. Content via TinyMCE (waits for editor to mount)
-  if (p.content) {
-    ui.update('content', 'running', 'waiting for TinyMCE');
-    await fillTinyMCE(toHtml(p.content));
-    ui.update('content', 'done');
-  }
-
-  // 3. Yoast SEO meta description (Draft.js, may load async)
-  let yoastFilled = false;
-  if (p.metaDesc) {
-    ui.update('meta', 'running', 'waiting for Yoast');
-    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
-    ui.update('meta', yoastFilled ? 'done' : 'failed',
-      yoastFilled ? null : 'field not found');
-  }
-
-  // 4. Videos category FIRST so ACF location rules render the youtube_id field
+  // 2. Videos category (instant click — must precede ACF)
   ui.update('category', 'running');
   let categoryFilled = false;
   const topLabels = document.querySelectorAll('#categorychecklist > li > label');
@@ -96,7 +84,7 @@ async function fillPost(p) {
   ui.update('category', categoryFilled ? 'done' : 'failed',
     categoryFilled ? null : 'no top-level "Videos" found');
 
-  // 5. ACF YouTube ID
+  // 3. ACF YouTube ID (waits for ACF to render after category change)
   let acfFilled = false;
   if (p.ytId) {
     ui.update('acf', 'running', 'waiting for ACF field');
@@ -105,7 +93,7 @@ async function fillPost(p) {
       acfFilled ? null : 'ACF field did not appear');
   }
 
-  // 6. Author
+  // 4. Author (waits for dropdown if enabled in Screen Options)
   let authorResult = { ok: false, reason: 'skipped' };
   if (p.author) {
     ui.update('author', 'running', 'waiting for dropdown');
@@ -117,6 +105,22 @@ async function fillPost(p) {
     } else {
       ui.update('author', 'failed', `"${p.author}" not in list — see console`);
     }
+  }
+
+  // 5. Yoast SEO meta description (Draft.js, mounts async — slow)
+  let yoastFilled = false;
+  if (p.metaDesc) {
+    ui.update('meta', 'running', 'waiting for Yoast');
+    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
+    ui.update('meta', yoastFilled ? 'done' : 'failed',
+      yoastFilled ? null : 'field not found');
+  }
+
+  // 6. Content via TinyMCE (iframe boot — slowest)
+  if (p.content) {
+    ui.update('content', 'running', 'waiting for TinyMCE');
+    await fillTinyMCE(toHtml(p.content));
+    ui.update('content', 'done');
   }
 
   // Determine if everything succeeded (skipped counts as ok).
