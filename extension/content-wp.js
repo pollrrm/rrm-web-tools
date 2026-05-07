@@ -40,56 +40,62 @@
     await fillTinyMCE(toHtml(p.content));
   }
 
-  // 3. Yoast SEO meta description
-  if (p.metaDesc) {
-    const yoast = document.getElementById('yoast_wpseo_metadesc');
-    if (yoast) setNativeValue(yoast, p.metaDesc);
-  }
+  // 3. Yoast SEO meta description — Yoast loads its meta box async, so wait + try multiple selectors.
+  let yoastFilled = false;
+  if (p.metaDesc) yoastFilled = await fillYoastMetaDesc(p.metaDesc);
 
   // 4. ACF YouTube ID — wrapper element has data-name="youtube_id"
+  let acfFilled = false;
   if (p.ytId) {
     const wrapper = document.querySelector('[data-name="youtube_id"]');
     if (wrapper) {
       const input = wrapper.querySelector('input[type="text"], input[type="number"], input:not([type]), textarea');
-      if (input) setNativeValue(input, p.ytId);
+      if (input) {
+        setNativeValue(input, p.ytId);
+        acfFilled = true;
+      }
     }
   }
 
-  // 5. Videos category checkbox
-  const checklist = document.getElementById('categorychecklist');
-  if (checklist) {
-    const labels = checklist.querySelectorAll('label');
-    for (const lbl of labels) {
-      if (lbl.textContent.trim().toLowerCase() === 'videos') {
-        const cb = lbl.querySelector('input[type="checkbox"]');
-        if (cb && !cb.checked) {
+  // 5. Videos category — find ONLY a top-level "Videos" checkbox (not a child like "Cemetery > Videos").
+  // WP renders categories as nested <ul>: top-level <li>s are direct children of #categorychecklist;
+  // subcategories live in <ul class="children"> inside their parent <li>. So we restrict the
+  // selector to direct-child labels only.
+  let categoryFilled = false;
+  const topLabels = document.querySelectorAll('#categorychecklist > li > label');
+  for (const lbl of topLabels) {
+    if (lbl.textContent.trim().toLowerCase() === 'videos') {
+      const cb = lbl.querySelector('input[type="checkbox"]');
+      if (cb) {
+        if (!cb.checked) {
           cb.checked = true;
           cb.dispatchEvent(new Event('change', { bubbles: true }));
           cb.dispatchEvent(new Event('click', { bubbles: true }));
         }
-        break;
+        categoryFilled = true;
       }
+      break;
     }
   }
 
-  // 6. Author (only if the Author meta box is enabled in Screen Options)
-  if (p.author) {
-    const authorSelect = document.getElementById('post_author_override');
-    if (authorSelect) {
-      for (const opt of authorSelect.options) {
-        if (opt.text.trim().toLowerCase() === p.author.toLowerCase()) {
-          authorSelect.value = opt.value;
-          authorSelect.dispatchEvent(new Event('change', { bubbles: true }));
-          break;
-        }
-      }
-    }
-  }
+  // 6. Author — wait for the Author meta box (must be enabled in Screen Options).
+  let authorFilled = false;
+  if (p.author) authorFilled = await setAuthor(p.author);
 
   // Clear so we don't re-fill on reload.
   chrome.storage.local.remove('rrm_pending');
 
-  showToast(`Prefilled from RRM Tools — review, set featured image, then Publish.`);
+  // Build a status summary so the user can see what worked.
+  const status = [
+    `Title ✓`,
+    p.content ? `Content ✓` : null,
+    p.metaDesc ? (yoastFilled ? `Meta description ✓` : `Meta description ✗ (Yoast field not found)`) : null,
+    p.ytId ? (acfFilled ? `YouTube ID ✓` : `YouTube ID ✗ (ACF field not found)`) : null,
+    categoryFilled ? `Videos category ✓` : `Videos category ✗ (no top-level "Videos" found)`,
+    p.author ? (authorFilled ? `Author ✓` : `Author ✗ (enable Author in Screen Options)`) : null
+  ].filter(Boolean).join('  •  ');
+
+  showToast(`Prefilled — ${status}`);
 })();
 
 // ---- helpers ----
@@ -147,6 +153,60 @@ async function fillTinyMCE(html) {
   if (ta) setNativeValue(ta, html);
 }
 
+// Fills Yoast SEO meta description. Modern Yoast may render the field via React,
+// so we try several known selectors and wait for it to mount.
+async function fillYoastMetaDesc(value) {
+  const selectors = [
+    '#yoast_wpseo_metadesc',                                       // Classic textarea / hidden input
+    'textarea#yoast_wpseo_metadesc',
+    'textarea[name="yoast_wpseo_metadesc"]',
+    'textarea[name="yoast_wpseo[metadesc]"]',                      // older form name
+    '[data-test-snippet-editor-input="meta-description"]',         // newer React UI
+    '[data-test-id="snippet-editor-meta-description"]',
+    'textarea[aria-label="Meta description" i]'
+  ];
+  for (let i = 0; i < 30; i++) {
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        setNativeValue(el, value);
+        // Some Yoast UIs also store in a sibling hidden input — sync if present.
+        const hidden = document.getElementById('yoast_wpseo_metadesc');
+        if (hidden && hidden !== el) setNativeValue(hidden, value);
+        return true;
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] Yoast meta description field not found.');
+  return false;
+}
+
+// Sets the Author dropdown if present (Author meta box must be enabled in Screen Options).
+// Tries to match the option's display name case-insensitively.
+async function setAuthor(name) {
+  for (let i = 0; i < 25; i++) {
+    const select = document.getElementById('post_author_override') ||
+                   document.querySelector('select[name="post_author_override"]');
+    if (select && select.options.length > 0) {
+      const target = name.trim().toLowerCase();
+      for (const opt of select.options) {
+        if (opt.text.trim().toLowerCase() === target) {
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+      }
+      console.warn('[RRM Helper] Author dropdown found but no option matched:', name,
+        '— available options:', Array.from(select.options).map(o => o.text));
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] Author dropdown not found. Enable Author in Screen Options.');
+  return false;
+}
+
 function showToast(msg) {
   const el = document.createElement('div');
   el.textContent = msg;
@@ -158,12 +218,12 @@ function showToast(msg) {
     z-index: 99999;
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     font-size: 13px; font-weight: 500;
-    max-width: 360px; line-height: 1.4;
+    max-width: 420px; line-height: 1.4;
   `;
   document.body.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity 0.4s';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 400);
-  }, 5000);
+  }, 9000);
 }
