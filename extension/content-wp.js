@@ -296,20 +296,42 @@ function toHtml(text) {
     .join('\n');
 }
 
-// Fills the Classic Editor TinyMCE area. Tries the TinyMCE API first; falls
-// back to the raw textarea if Visual mode hasn't initialized yet.
+// Fills the Classic Editor content. Strategy:
+//   1. Write to the underlying #content textarea immediately — that's the
+//      source of truth WordPress saves, and TinyMCE picks it up on mount.
+//   2. If TinyMCE is already loaded, also call setContent so the visual
+//      editor reflects it right away.
+//   3. If TinyMCE isn't loaded yet, briefly poll (up to ~3s). If it shows up,
+//      sync the visual; if not, we're done — the textarea is already correct.
+//
+// Why we keep the <p> wrapping (toHtml): TinyMCE's setContent expects HTML.
+// Raw text with newlines would render as one paragraph in the Visual editor
+// until the user saved, which looks broken even though the published post
+// would be fine via WordPress's wpautop filter.
 async function fillTinyMCE(html) {
-  for (let i = 0; i < 75; i++) {
+  // Step 1: Always write to the underlying textarea first — instant.
+  const ta = document.getElementById('content');
+  if (ta) setNativeValue(ta, html);
+
+  // Step 2: If TinyMCE is already mounted, sync the visual editor too.
+  const trySync = () => {
     if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
       const ed = window.tinymce.get('content');
       ed.setContent(html);
       ed.save();
-      return;
+      return true;
     }
+    return false;
+  };
+  if (trySync()) return;
+
+  // Step 3: Short poll for TinyMCE in case it's mid-mount. We don't block
+  // long because the textarea is already correct — Publish will save fine.
+  for (let i = 0; i < 15; i++) { // up to ~3 seconds
     await new Promise(r => setTimeout(r, 200));
+    if (trySync()) return;
   }
-  const ta = document.getElementById('content');
-  if (ta) setNativeValue(ta, html);
+  // Timed out waiting for TinyMCE — that's fine, textarea path covers us.
 }
 
 // Fills Yoast SEO meta description.
