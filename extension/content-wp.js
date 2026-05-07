@@ -1,14 +1,16 @@
 // Runs on the WordPress Classic Editor new-post / edit-post pages.
 // Two entry points fill the same set of fields:
-//   1. chrome.storage.local "rrm_pending" — used by the YT tool's "Send to RRM@home" button
+//   1. chrome.storage.local "rrm_pending" — used by the YT tool's "Send to ..." buttons
 //   2. chrome.runtime message "RRM_FILL_POST"  — used by the extension's side panel
 // Fields filled:
 //   - Title
-//   - Content (TinyMCE, with paragraph-wrapped HTML)
 //   - Yoast SEO Meta Description (Draft.js)
-//   - "Videos" top-level category checkbox
+//   - Categories (single top-level OR a path like ["Funeral","Videos"])
 //   - ACF "youtube_id" field (rendered after the category click)
 //   - Author dropdown (display name match)
+//
+// Content/TinyMCE is NOT auto-filled — too slow to mount reliably. Users copy-paste
+// the Content block from the YT tool / side panel manually.
 
 // ---- Entry point 1: storage-based (existing flow) ----
 (async function () {
@@ -40,13 +42,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // constraint: Videos category MUST be set before ACF YouTube ID, since ACF's
 // location rules only render the field once Videos is checked.
 async function fillPost(p) {
+  // Default category path is just ["Videos"] for back-compat with niches that
+  // use a single top-level Videos category.
+  const categories = (Array.isArray(p.categories) && p.categories.length)
+    ? p.categories
+    : ['Videos'];
+  const categoryStepLabel = categories.length > 1
+    ? `Categories: ${categories.join(' → ')}`
+    : `${categories[0]} category`;
+
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
-  ui.addStep('category', 'Videos category');
-  if (p.ytId)     ui.addStep('acf',     'YouTube ID (ACF)');
-  if (p.author)   ui.addStep('author',  'Author');
-  if (p.metaDesc) ui.addStep('meta',    'Meta description (Yoast)');
-  if (p.content)  ui.addStep('content', 'Content (TinyMCE)');
+  ui.addStep('category', categoryStepLabel);
+  if (p.ytId)     ui.addStep('acf',    'YouTube ID (ACF)');
+  if (p.author)   ui.addStep('author', 'Author');
+  if (p.metaDesc) ui.addStep('meta',   'Meta description (Yoast)');
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -67,24 +77,18 @@ async function fillPost(p) {
     ui.update('title', 'skipped');
   }
 
-  // 2. Videos category (instant click — must precede ACF)
+  // 2. Categories — supports a single top-level name OR a parent→child path.
   ui.update('category', 'running');
-  let categoryFilled = false;
-  const topLabels = document.querySelectorAll('#categorychecklist > li > label');
-  for (const lbl of topLabels) {
-    if (lbl.textContent.trim().toLowerCase() === 'videos') {
-      const cb = lbl.querySelector('input[type="checkbox"]');
-      if (cb) {
-        if (!cb.checked) cb.click();
-        categoryFilled = true;
-      }
-      break;
-    }
+  const catResult = fillCategoryPath(categories);
+  if (catResult.failed.length === 0) {
+    ui.update('category', 'done',
+      categories.length > 1 ? `${categories.join(' → ')} ✓` : null);
+  } else {
+    ui.update('category', 'failed',
+      `failed at "${catResult.failed[0]}"${catResult.checked.length ? ` (got: ${catResult.checked.join(' → ')})` : ''}`);
   }
-  ui.update('category', categoryFilled ? 'done' : 'failed',
-    categoryFilled ? null : 'no top-level "Videos" found');
 
-  // 3. ACF YouTube ID (waits for ACF to render after category change)
+  // 3. ACF YouTube ID (waits for ACF to render after category click)
   let acfFilled = false;
   if (p.ytId) {
     ui.update('acf', 'running', 'waiting for ACF field');
@@ -107,7 +111,7 @@ async function fillPost(p) {
     }
   }
 
-  // 5. Yoast SEO meta description (Draft.js, mounts async — slow)
+  // 5. Yoast SEO meta description (Draft.js, mounts async)
   let yoastFilled = false;
   if (p.metaDesc) {
     ui.update('meta', 'running', 'waiting for Yoast');
@@ -116,18 +120,72 @@ async function fillPost(p) {
       yoastFilled ? null : 'field not found');
   }
 
-  // 6. Content via TinyMCE (iframe boot — slowest)
-  if (p.content) {
-    ui.update('content', 'running', 'waiting for TinyMCE');
-    await fillTinyMCE(toHtml(p.content));
-    ui.update('content', 'done');
-  }
+  // Note: Content (TinyMCE) is intentionally NOT filled here — the iframe
+  // boot is too slow. The user copy-pastes the Content block manually.
 
-  // Determine if everything succeeded (skipped counts as ok).
   const allOk = ui.allDone();
   ui.finish(allOk);
 
-  return { yoastFilled, categoryFilled, acfFilled, authorResult };
+  return { yoastFilled, categoryResult: catResult, acfFilled, authorResult };
+}
+
+// Walks a category path like ["Funeral","Videos"] and ticks each checkbox in turn.
+// For a single-element path, behaves like the old top-level Videos lookup.
+// Subcategory matching is restricted to the previous level's <ul class="children">
+// so we never confuse, e.g., "Cemetery > Videos" with the desired "Funeral > Videos".
+function fillCategoryPath(path) {
+  const checked = [];
+  const failed = [];
+
+  // Top-level: direct children of #categorychecklist
+  const topLabels = document.querySelectorAll('#categorychecklist > li > label');
+  let parentLi = null;
+  const wantTop = (path[0] || '').trim().toLowerCase();
+  for (const lbl of topLabels) {
+    if (lbl.textContent.trim().toLowerCase() === wantTop) {
+      const cb = lbl.querySelector('input[type="checkbox"]');
+      if (cb) {
+        if (!cb.checked) cb.click();
+        checked.push(path[0]);
+        parentLi = lbl.parentElement; // the <li>
+      }
+      break;
+    }
+  }
+  if (!parentLi) {
+    failed.push(path[0]);
+    return { checked, failed };
+  }
+
+  // Subsequent levels — search inside the parent's children list only.
+  for (let i = 1; i < path.length; i++) {
+    const childUl = parentLi.querySelector(':scope > ul.children');
+    if (!childUl) {
+      failed.push(path[i]);
+      break;
+    }
+    const childLabels = childUl.querySelectorAll(':scope > li > label');
+    const want = path[i].trim().toLowerCase();
+    let found = false;
+    for (const lbl of childLabels) {
+      if (lbl.textContent.trim().toLowerCase() === want) {
+        const cb = lbl.querySelector('input[type="checkbox"]');
+        if (cb) {
+          if (!cb.checked) cb.click();
+          checked.push(path[i]);
+          parentLi = lbl.parentElement;
+          found = true;
+        }
+        break;
+      }
+    }
+    if (!found) {
+      failed.push(path[i]);
+      break;
+    }
+  }
+
+  return { checked, failed };
 }
 
 // ---- Progress UI ----
@@ -285,54 +343,8 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event('keyup', { bubbles: true }));
 }
 
-// Convert plain multi-paragraph text to HTML paragraphs. Preserves any HTML
-// already present.
-function toHtml(text) {
-  if (/<\w+/.test(text)) return text;
-  return text
-    .split(/\n{2,}/)
-    .map(para => `<p>${para.trim().replace(/\n/g, '<br>')}</p>`)
-    .filter(p => p !== '<p></p>')
-    .join('\n');
-}
-
-// Fills the Classic Editor content. Strategy:
-//   1. Write to the underlying #content textarea immediately — that's the
-//      source of truth WordPress saves, and TinyMCE picks it up on mount.
-//   2. If TinyMCE is already loaded, also call setContent so the visual
-//      editor reflects it right away.
-//   3. If TinyMCE isn't loaded yet, briefly poll (up to ~3s). If it shows up,
-//      sync the visual; if not, we're done — the textarea is already correct.
-//
-// Why we keep the <p> wrapping (toHtml): TinyMCE's setContent expects HTML.
-// Raw text with newlines would render as one paragraph in the Visual editor
-// until the user saved, which looks broken even though the published post
-// would be fine via WordPress's wpautop filter.
-async function fillTinyMCE(html) {
-  // Step 1: Always write to the underlying textarea first — instant.
-  const ta = document.getElementById('content');
-  if (ta) setNativeValue(ta, html);
-
-  // Step 2: If TinyMCE is already mounted, sync the visual editor too.
-  const trySync = () => {
-    if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
-      const ed = window.tinymce.get('content');
-      ed.setContent(html);
-      ed.save();
-      return true;
-    }
-    return false;
-  };
-  if (trySync()) return;
-
-  // Step 3: Short poll for TinyMCE in case it's mid-mount. We don't block
-  // long because the textarea is already correct — Publish will save fine.
-  for (let i = 0; i < 15; i++) { // up to ~3 seconds
-    await new Promise(r => setTimeout(r, 200));
-    if (trySync()) return;
-  }
-  // Timed out waiting for TinyMCE — that's fine, textarea path covers us.
-}
+// (TinyMCE / Content fill removed — too slow to mount reliably. The Content
+// block in the YT tool / side panel has a Copy button; users paste manually.)
 
 // Fills Yoast SEO meta description.
 // Modern Yoast (18+) uses a Draft.js contenteditable, NOT a textarea. Direct

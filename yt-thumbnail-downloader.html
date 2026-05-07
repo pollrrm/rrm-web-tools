@@ -474,11 +474,11 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
   // entry's industry. Entries whose industry isn't here render the button
   // permanently disabled with a tooltip.
   const INDUSTRY_TARGETS = {
-    'home improvement': { target: 'rrmathome', label: 'RRM@home' },
-    'home care':        { target: 'scmm',      label: 'SCMM' }
+    'home improvement': { target: 'rrmathome', label: 'RRM@home', categories: ['Videos'] },
+    'home care':        { target: 'scmm',      label: 'SCMM',     categories: ['Videos'] },
+    'funeral homes':    { target: 'rrm',       label: 'RRM',      categories: ['Funeral', 'Videos'] }
     // Future:
-    // 'funeral homes':  { target: 'rrm',     label: 'RRM' },
-    // 'hospice':        { target: 'hospice', label: 'Hospice' }
+    // 'hospice':        { target: 'hospice', label: 'Hospice', categories: ['Videos'] }
   };
   function getTargetForIndustry(industry) {
     if (!industry) return null;
@@ -531,6 +531,7 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
   }, 200);
 
   function sendToWp(entry, target) {
+    const ind = getTargetForIndustry(entry.industry);
     const payload = {
       title: entry.title,
       content: entry.content || '',
@@ -538,7 +539,8 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
       ytId: entry.id,
       author: 'Welton Hong',
       thumbUrl: entry.thumbUrl,
-      filename: entry.filename
+      filename: entry.filename,
+      categories: ind && ind.categories ? ind.categories : ['Videos']
     };
     window.postMessage({ type: 'RRM_SEND_TO_WP', target, payload }, '*');
   }

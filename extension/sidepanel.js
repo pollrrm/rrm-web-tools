@@ -10,7 +10,8 @@ const NICHES = {
     industry: 'home improvement',
     host: 'rrmathome.com',
     hostRe: /(^|\.)rrmathome\.com$/i,
-    pathRe: /\/wp-admin\/post(-new)?\.php/
+    pathRe: /\/wp-admin\/post(-new)?\.php/,
+    categories: ['Videos']
   },
   'scmm': {
     label: 'SCMM (Home Care)',
@@ -18,7 +19,17 @@ const NICHES = {
     industry: 'home care',
     host: 'seniorcaremarketingmax.com',
     hostRe: /(^|\.)seniorcaremarketingmax\.com$/i,
-    pathRe: /\/wp-admin\/post(-new)?\.php/
+    pathRe: /\/wp-admin\/post(-new)?\.php/,
+    categories: ['Videos']
+  },
+  'rrm': {
+    label: 'RRM (Funeral Homes)',
+    chip: 'RRM',
+    industry: 'funeral homes',
+    host: 'ringringmarketing.com',
+    hostRe: /(^|\.)ringringmarketing\.com$/i,
+    pathRe: /\/wp-admin\/post(-new)?\.php/,
+    categories: ['Funeral', 'Videos']
   }
 };
 
@@ -290,6 +301,7 @@ async function downloadEntry(entry) {
 async function fillCurrentTab(entry, btn) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.id) return;
+  const niche = getNiche();
   const payload = {
     title: entry.title,
     content: entry.content || '',
@@ -297,7 +309,8 @@ async function fillCurrentTab(entry, btn) {
     ytId: entry.id,
     author: 'Welton Hong',
     thumbUrl: entry.thumbUrl,
-    filename: entry.filename
+    filename: entry.filename,
+    categories: niche.categories || ['Videos']
   };
   const originalText = btn.textContent;
   btn.classList.add('busy');
