@@ -1,53 +1,86 @@
 // Runs on the WordPress Classic Editor new-post / edit-post pages.
-// Reads the pending payload from chrome.storage.local and prefills:
+// Two entry points fill the same set of fields:
+//   1. chrome.storage.local "rrm_pending" — used by the YT tool's "Send to RRM@home" button
+//   2. chrome.runtime message "RRM_FILL_POST"  — used by the extension's side panel
+// Fields filled:
 //   - Title
 //   - Content (TinyMCE, with paragraph-wrapped HTML)
-//   - Yoast SEO Meta Description
-//   - ACF "youtube_id" field
-//   - "Videos" category checkbox
+//   - Yoast SEO Meta Description (Draft.js)
+//   - "Videos" top-level category checkbox
+//   - ACF "youtube_id" field (rendered after the category click)
 //   - Author dropdown (display name match)
 
+// ---- Entry point 1: storage-based (existing flow) ----
 (async function () {
   const { rrm_pending } = await chrome.storage.local.get('rrm_pending');
   if (!rrm_pending || !rrm_pending.payload) return;
-
-  // Only consume payloads stashed within the last 60 seconds.
   if (Date.now() - rrm_pending.ts > 60000) {
     chrome.storage.local.remove('rrm_pending');
     return;
   }
+  chrome.storage.local.remove('rrm_pending');
+  await fillPost(rrm_pending.payload);
+})();
 
-  const p = rrm_pending.payload;
+// ---- Entry point 2: message-based (side panel flow) ----
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'RRM_FILL_POST' || !msg.payload) return;
+  fillPost(msg.payload).then((status) => {
+    sendResponse({ ok: true, status });
+  }).catch((err) => {
+    console.error('[RRM Helper] fillPost failed:', err);
+    sendResponse({ ok: false, error: String(err) });
+  });
+  return true; // keep the message channel open for async response
+});
+
+// ---- Core fill logic — drives a step-by-step progress panel for visibility ----
+async function fillPost(p) {
+  const ui = createProgressUI('RRM Helper — Filling post…');
+  ui.addStep('title', 'Title');
+  if (p.content)  ui.addStep('content',  'Content (TinyMCE)');
+  if (p.metaDesc) ui.addStep('meta',     'Meta description (Yoast)');
+  ui.addStep('category', 'Videos category');
+  if (p.ytId)    ui.addStep('acf',      'YouTube ID (ACF)');
+  if (p.author)  ui.addStep('author',   'Author');
 
   try {
-    // Wait for the editor's title input to appear before doing anything.
+    ui.update('title', 'running', 'waiting for editor');
     await waitFor(() => document.getElementById('title'), { timeout: 15000 });
   } catch {
-    return; // Probably not on a post edit screen
+    ui.update('title', 'failed', 'not on a post page');
+    ui.finish(false);
+    return { error: 'not-on-post-page' };
   }
 
   // 1. Title
   const titleEl = document.getElementById('title');
   if (titleEl && p.title) {
     setNativeValue(titleEl, p.title);
-    // Some themes only swap the prompt label after focus.
-    titleEl.focus();
-    titleEl.blur();
+    titleEl.focus(); titleEl.blur();
+    ui.update('title', 'done');
+  } else {
+    ui.update('title', 'skipped');
   }
 
-  // 2. Content into TinyMCE
+  // 2. Content via TinyMCE (waits for editor to mount)
   if (p.content) {
+    ui.update('content', 'running', 'waiting for TinyMCE');
     await fillTinyMCE(toHtml(p.content));
+    ui.update('content', 'done');
   }
 
-  // 3. Yoast SEO meta description — Yoast loads its meta box async, so wait + try multiple selectors.
+  // 3. Yoast SEO meta description (Draft.js, may load async)
   let yoastFilled = false;
-  if (p.metaDesc) yoastFilled = await fillYoastMetaDesc(p.metaDesc);
+  if (p.metaDesc) {
+    ui.update('meta', 'running', 'waiting for Yoast');
+    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
+    ui.update('meta', yoastFilled ? 'done' : 'failed',
+      yoastFilled ? null : 'field not found');
+  }
 
-  // 4. Videos category FIRST — ACF location rules only show the youtube_id field
-  // when the "Videos" category is selected. Setting it later means the field
-  // wasn't in the DOM yet when we tried to fill it.
-  // Use native click() so all of WP's + ACF's event listeners fire.
+  // 4. Videos category FIRST so ACF location rules render the youtube_id field
+  ui.update('category', 'running');
   let categoryFilled = false;
   const topLabels = document.querySelectorAll('#categorychecklist > li > label');
   for (const lbl of topLabels) {
@@ -60,38 +93,165 @@
       break;
     }
   }
+  ui.update('category', categoryFilled ? 'done' : 'failed',
+    categoryFilled ? null : 'no top-level "Videos" found');
 
-  // 5. ACF YouTube ID — now wait for the field to render after the category change.
+  // 5. ACF YouTube ID
   let acfFilled = false;
-  if (p.ytId) acfFilled = await fillAcfYoutubeId(p.ytId);
+  if (p.ytId) {
+    ui.update('acf', 'running', 'waiting for ACF field');
+    acfFilled = await fillAcfYoutubeId(p.ytId);
+    ui.update('acf', acfFilled ? 'done' : 'failed',
+      acfFilled ? null : 'ACF field did not appear');
+  }
 
-  // 6. Author — wait for the Author meta box (must be enabled in Screen Options).
+  // 6. Author
   let authorResult = { ok: false, reason: 'skipped' };
-  if (p.author) authorResult = await setAuthor(p.author);
+  if (p.author) {
+    ui.update('author', 'running', 'waiting for dropdown');
+    authorResult = await setAuthor(p.author);
+    if (authorResult.ok) {
+      ui.update('author', 'done', authorResult.partial ? 'partial match' : null);
+    } else if (authorResult.reason === 'no-dropdown') {
+      ui.update('author', 'failed', 'enable Author in Screen Options');
+    } else {
+      ui.update('author', 'failed', `"${p.author}" not in list — see console`);
+    }
+  }
 
-  // Clear so we don't re-fill on reload.
-  chrome.storage.local.remove('rrm_pending');
+  // Determine if everything succeeded (skipped counts as ok).
+  const allOk = ui.allDone();
+  ui.finish(allOk);
 
-  // Build a status summary so the user can see what worked.
-  const authorMsg = !p.author
-    ? null
-    : authorResult.ok
-      ? (authorResult.partial ? `Author ✓ (partial match)` : `Author ✓`)
-      : authorResult.reason === 'no-dropdown'
-        ? `Author ✗ (enable Author in Screen Options)`
-        : `Author ✗ ("${p.author}" not in list — see console)`;
+  return { yoastFilled, categoryFilled, acfFilled, authorResult };
+}
 
-  const status = [
-    `Title ✓`,
-    p.content ? `Content ✓` : null,
-    p.metaDesc ? (yoastFilled ? `Meta description ✓` : `Meta description ✗ (Yoast field not found)`) : null,
-    categoryFilled ? `Videos category ✓` : `Videos category ✗ (no top-level "Videos" found)`,
-    p.ytId ? (acfFilled ? `YouTube ID ✓` : `YouTube ID ✗ (ACF field did not appear)`) : null,
-    authorMsg
-  ].filter(Boolean).join('  •  ');
+// ---- Progress UI ----
+function injectProgressStyles() {
+  if (document.getElementById('rrm-progress-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'rrm-progress-styles';
+  style.textContent = `
+    .rrm-progress {
+      position: fixed; top: 60px; right: 20px;
+      background: #181b22; color: #e6e6e6;
+      border: 1px solid #5b8def; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      z-index: 100000;
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-size: 13px; line-height: 1.4;
+      min-width: 260px; max-width: 380px;
+      animation: rrm-fade-in .25s ease-out;
+    }
+    .rrm-progress.rrm-fade-out { opacity: 0; transition: opacity .4s; }
+    .rrm-progress[data-state="success"] { border-color: #2d7a3e; }
+    .rrm-progress[data-state="failed"] { border-color: #c08a3e; }
+    .rrm-progress-head {
+      padding: 10px 14px; font-weight: 600;
+      border-bottom: 1px solid #2a2f3a;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .rrm-progress-close {
+      cursor: pointer; color: #8a93a3; background: transparent;
+      border: 0; font-size: 16px; line-height: 1; padding: 2px 6px;
+    }
+    .rrm-progress-close:hover { color: #e6e6e6; }
+    .rrm-progress-steps { list-style: none; margin: 0; padding: 8px 14px 12px; }
+    .rrm-progress-steps li {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 4px 0; color: #8a93a3;
+    }
+    .rrm-progress-steps li[data-status="running"] { color: #e6e6e6; }
+    .rrm-progress-steps li[data-status="done"] { color: #6cd17b; }
+    .rrm-progress-steps li[data-status="failed"] { color: #ff7676; }
+    .rrm-progress-steps li[data-status="skipped"] { color: #6a7180; }
+    .rrm-progress-steps .rrm-icon {
+      width: 16px; flex-shrink: 0; text-align: center;
+      font-family: ui-monospace, Menlo, monospace; font-weight: 700;
+    }
+    .rrm-progress-steps li[data-status="running"] .rrm-icon {
+      display: inline-block; animation: rrm-spin 1.1s linear infinite;
+    }
+    .rrm-progress-steps .rrm-detail {
+      color: #8a93a3; font-size: 11px; font-style: italic;
+    }
+    @keyframes rrm-fade-in {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes rrm-spin {
+      to { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
-  showToast(`Prefilled — ${status}`);
-})();
+function createProgressUI(title) {
+  injectProgressStyles();
+  const existing = document.getElementById('rrm-progress-panel');
+  if (existing) existing.remove();
+
+  const root = document.createElement('div');
+  root.id = 'rrm-progress-panel';
+  root.className = 'rrm-progress';
+  root.innerHTML = `
+    <div class="rrm-progress-head">
+      <span class="rrm-progress-title">${title}</span>
+      <button class="rrm-progress-close" title="Dismiss">×</button>
+    </div>
+    <ul class="rrm-progress-steps"></ul>
+  `;
+  document.body.appendChild(root);
+  root.querySelector('.rrm-progress-close').onclick = () => root.remove();
+
+  const stepsEl = root.querySelector('.rrm-progress-steps');
+  const titleEl = root.querySelector('.rrm-progress-title');
+  const iconFor = { pending: '·', running: '◌', done: '✓', failed: '✗', skipped: '–' };
+  const stepKeys = [];
+
+  function addStep(key, label) {
+    stepKeys.push(key);
+    const li = document.createElement('li');
+    li.dataset.key = key;
+    li.dataset.status = 'pending';
+    li.innerHTML = `
+      <span class="rrm-icon">${iconFor.pending}</span>
+      <span class="rrm-label">${label}</span>
+      <span class="rrm-detail"></span>
+    `;
+    stepsEl.appendChild(li);
+  }
+
+  function update(key, status, detail) {
+    const li = stepsEl.querySelector(`li[data-key="${key}"]`);
+    if (!li) return;
+    li.dataset.status = status;
+    li.querySelector('.rrm-icon').textContent = iconFor[status] || iconFor.pending;
+    if (detail !== undefined) {
+      li.querySelector('.rrm-detail').textContent = detail ? `— ${detail}` : '';
+    }
+  }
+
+  function allDone() {
+    return stepKeys.every(k => {
+      const li = stepsEl.querySelector(`li[data-key="${k}"]`);
+      const s = li && li.dataset.status;
+      return s === 'done' || s === 'skipped';
+    });
+  }
+
+  function finish(success = true) {
+    root.dataset.state = success ? 'success' : 'failed';
+    titleEl.textContent = success ? 'RRM Helper — Prefilled ✓' : 'RRM Helper — Done with issues';
+    setTimeout(() => {
+      if (!document.body.contains(root)) return;
+      root.classList.add('rrm-fade-out');
+      setTimeout(() => root.remove(), 400);
+    }, success ? 5000 : 12000);
+  }
+
+  return { addStep, update, finish, allDone };
+}
 
 // ---- helpers ----
 
@@ -273,23 +433,4 @@ async function setAuthor(name) {
   return { ok: false, reason: 'no-dropdown' };
 }
 
-function showToast(msg) {
-  const el = document.createElement('div');
-  el.textContent = msg;
-  el.style.cssText = `
-    position: fixed; bottom: 24px; right: 24px;
-    background: #2d7a3e; color: white;
-    padding: 12px 18px; border-radius: 8px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-    z-index: 99999;
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-    font-size: 13px; font-weight: 500;
-    max-width: 420px; line-height: 1.4;
-  `;
-  document.body.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = 'opacity 0.4s';
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 400);
-  }, 9000);
-}
+// (showToast removed — superseded by the inline progress panel.)

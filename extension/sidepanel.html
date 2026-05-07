@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RRM WP Helper — RRM@home</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #0f1115;
+    color: #e6e6e6;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 14px;
+  }
+  h1 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scope {
+    font-size: 10px;
+    background: #2a2f3a;
+    color: #c8a8ff;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .subtitle {
+    color: #8a93a3;
+    font-size: 11px;
+    margin: 0 0 14px;
+  }
+  .status-line {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #8a93a3;
+  }
+  .status-line.ok { border-color: #2d7a3e; color: #6cd17b; }
+  .status-line.warn { border-color: #c08a3e; color: #ffb04d; }
+  textarea {
+    width: 100%;
+    min-height: 90px;
+    max-height: 240px;
+    padding: 8px 10px;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    color: #e6e6e6;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: #5b8def; }
+  button {
+    background: #5b8def;
+    color: white;
+    border: 0;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+  }
+  button:hover { background: #4a7ce0; }
+  button:disabled {
+    background: #2a2f3a;
+    color: #6a7180;
+    cursor: not-allowed;
+  }
+  button.secondary { background: #2a2f3a; }
+  button.secondary:hover { background: #353b48; }
+  button.fill-btn { background: #8b5cf6; }
+  button.fill-btn:hover { background: #7c4ce0; }
+  button.download-btn { background: #2a2f3a; color: #e6e6e6; }
+  button.download-btn:hover { background: #353b48; }
+  .hint { font-size: 11px; color: #8a93a3; margin-top: 6px; }
+  .err { color: #ff7676; font-size: 11px; margin-top: 6px; }
+
+  .card {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .card img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    border-radius: 4px;
+    background: #000;
+    margin-bottom: 8px;
+  }
+  .card .title {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    word-break: break-word;
+  }
+  .card .meta {
+    font-size: 10px;
+    color: #8a93a3;
+    margin-bottom: 8px;
+  }
+  .copy-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    padding: 3px 4px 3px 7px;
+    margin-bottom: 6px;
+    font-size: 10px;
+  }
+  .copy-row .label { color: #8a93a3; flex-shrink: 0; }
+  .copy-row .value {
+    flex: 1;
+    color: #e6e6e6;
+    font-family: ui-monospace, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .copy-row button {
+    background: #2a2f3a;
+    color: #b8bdc8;
+    padding: 2px 6px;
+    font-size: 9px;
+    width: auto;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .copy-row button.copied { background: #2d7a3e; color: white; }
+  .content-block {
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+  .content-block .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 4px 3px 7px;
+    border-bottom: 1px solid #2a2f3a;
+    font-size: 10px;
+    color: #8a93a3;
+  }
+  .content-block .head button {
+    background: #2a2f3a;
+    color: #b8bdc8;
+    padding: 2px 6px;
+    font-size: 9px;
+    width: auto;
+    margin: 0;
+  }
+  .content-block .head button.copied { background: #2d7a3e; color: white; }
+  .content-block pre {
+    margin: 0;
+    padding: 6px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 80px;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1.4;
+    color: #e6e6e6;
+  }
+  .filename {
+    font-size: 10px;
+    color: #6cd17b;
+    margin-bottom: 8px;
+    word-break: break-all;
+  }
+  .empty {
+    text-align: center;
+    color: #8a93a3;
+    font-size: 11px;
+    padding: 20px 0;
+  }
+  .niche-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .niche-row label { color: #8a93a3; font-size: 11px; flex-shrink: 0; }
+  .niche-row select {
+    flex: 1;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    color: #e6e6e6;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .niche-row select:focus { outline: none; border-color: #5b8def; }
+  button.fill-btn.busy {
+    background: #4a4a4a;
+    cursor: progress;
+  }
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .9s linear infinite;
+    vertical-align: -1px;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>RRM WP Helper <span class="scope" id="nicheScope">—</span></h1>
+<p class="subtitle">Paste the email, pick the niche, then click <strong>Fill This Post</strong> on the active New Post page.</p>
+
+<div class="niche-row">
+  <label for="nicheSelect">Niche:</label>
+  <select id="nicheSelect"></select>
+</div>
+
+<div id="tabStatus" class="status-line">Checking active tab…</div>
+
+<textarea id="bulk" placeholder="Paste the full task email here. Only the selected niche's videos will appear."></textarea>
+<button id="extractBtn">Extract</button>
+<div id="bulkErr" class="err"></div>
+
+<div id="results"></div>
+
+<script src="sidepanel.js"></script>
+
+</body>
+</html>
