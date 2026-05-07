@@ -44,55 +44,50 @@
   let yoastFilled = false;
   if (p.metaDesc) yoastFilled = await fillYoastMetaDesc(p.metaDesc);
 
-  // 4. ACF YouTube ID — wrapper element has data-name="youtube_id"
-  let acfFilled = false;
-  if (p.ytId) {
-    const wrapper = document.querySelector('[data-name="youtube_id"]');
-    if (wrapper) {
-      const input = wrapper.querySelector('input[type="text"], input[type="number"], input:not([type]), textarea');
-      if (input) {
-        setNativeValue(input, p.ytId);
-        acfFilled = true;
-      }
-    }
-  }
-
-  // 5. Videos category — find ONLY a top-level "Videos" checkbox (not a child like "Cemetery > Videos").
-  // WP renders categories as nested <ul>: top-level <li>s are direct children of #categorychecklist;
-  // subcategories live in <ul class="children"> inside their parent <li>. So we restrict the
-  // selector to direct-child labels only.
+  // 4. Videos category FIRST — ACF location rules only show the youtube_id field
+  // when the "Videos" category is selected. Setting it later means the field
+  // wasn't in the DOM yet when we tried to fill it.
+  // Use native click() so all of WP's + ACF's event listeners fire.
   let categoryFilled = false;
   const topLabels = document.querySelectorAll('#categorychecklist > li > label');
   for (const lbl of topLabels) {
     if (lbl.textContent.trim().toLowerCase() === 'videos') {
       const cb = lbl.querySelector('input[type="checkbox"]');
       if (cb) {
-        if (!cb.checked) {
-          cb.checked = true;
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-          cb.dispatchEvent(new Event('click', { bubbles: true }));
-        }
+        if (!cb.checked) cb.click();
         categoryFilled = true;
       }
       break;
     }
   }
 
+  // 5. ACF YouTube ID — now wait for the field to render after the category change.
+  let acfFilled = false;
+  if (p.ytId) acfFilled = await fillAcfYoutubeId(p.ytId);
+
   // 6. Author — wait for the Author meta box (must be enabled in Screen Options).
-  let authorFilled = false;
-  if (p.author) authorFilled = await setAuthor(p.author);
+  let authorResult = { ok: false, reason: 'skipped' };
+  if (p.author) authorResult = await setAuthor(p.author);
 
   // Clear so we don't re-fill on reload.
   chrome.storage.local.remove('rrm_pending');
 
   // Build a status summary so the user can see what worked.
+  const authorMsg = !p.author
+    ? null
+    : authorResult.ok
+      ? (authorResult.partial ? `Author ✓ (partial match)` : `Author ✓`)
+      : authorResult.reason === 'no-dropdown'
+        ? `Author ✗ (enable Author in Screen Options)`
+        : `Author ✗ ("${p.author}" not in list — see console)`;
+
   const status = [
     `Title ✓`,
     p.content ? `Content ✓` : null,
     p.metaDesc ? (yoastFilled ? `Meta description ✓` : `Meta description ✗ (Yoast field not found)`) : null,
-    p.ytId ? (acfFilled ? `YouTube ID ✓` : `YouTube ID ✗ (ACF field not found)`) : null,
     categoryFilled ? `Videos category ✓` : `Videos category ✗ (no top-level "Videos" found)`,
-    p.author ? (authorFilled ? `Author ✓` : `Author ✗ (enable Author in Screen Options)`) : null
+    p.ytId ? (acfFilled ? `YouTube ID ✓` : `YouTube ID ✗ (ACF field did not appear)`) : null,
+    authorMsg
   ].filter(Boolean).join('  •  ');
 
   showToast(`Prefilled — ${status}`);
@@ -153,58 +148,129 @@ async function fillTinyMCE(html) {
   if (ta) setNativeValue(ta, html);
 }
 
-// Fills Yoast SEO meta description. Modern Yoast may render the field via React,
-// so we try several known selectors and wait for it to mount.
+// Fills Yoast SEO meta description.
+// Modern Yoast (18+) uses a Draft.js contenteditable, NOT a textarea. Direct
+// value writes are ignored because Draft.js controls state via React. Instead
+// we focus the editor, select existing content, and use execCommand('insertText')
+// which Draft.js intercepts and routes through its normal state updates.
+// Falls back to legacy textarea selectors for older Yoast versions.
 async function fillYoastMetaDesc(value) {
-  const selectors = [
-    '#yoast_wpseo_metadesc',                                       // Classic textarea / hidden input
+  const draftSelectors = [
+    '#yoast-google-preview-description-metabox',                                       // Yoast 18+ Classic Editor metabox
+    '[id^="yoast-google-preview-description"]',                                        // any variant of the above id
+    'div.public-DraftEditor-content[aria-labelledby^="replacement-variable-editor-field"]' // generic Draft.js fallback
+  ];
+  const legacySelectors = [
+    '#yoast_wpseo_metadesc',
     'textarea#yoast_wpseo_metadesc',
     'textarea[name="yoast_wpseo_metadesc"]',
-    'textarea[name="yoast_wpseo[metadesc]"]',                      // older form name
-    '[data-test-snippet-editor-input="meta-description"]',         // newer React UI
-    '[data-test-id="snippet-editor-meta-description"]',
-    'textarea[aria-label="Meta description" i]'
+    'textarea[name="yoast_wpseo[metadesc]"]'
   ];
+
   for (let i = 0; i < 30; i++) {
-    for (const sel of selectors) {
+    // Try Draft.js editor first
+    for (const sel of draftSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.isContentEditable) {
+        return setDraftEditorText(el, value);
+      }
+    }
+    // Older Yoast / fallback
+    for (const sel of legacySelectors) {
       const el = document.querySelector(sel);
       if (el) {
         setNativeValue(el, value);
-        // Some Yoast UIs also store in a sibling hidden input — sync if present.
-        const hidden = document.getElementById('yoast_wpseo_metadesc');
-        if (hidden && hidden !== el) setNativeValue(hidden, value);
         return true;
       }
     }
     await new Promise(r => setTimeout(r, 200));
   }
-  console.warn('[RRM Helper] Yoast meta description field not found.');
+  console.warn('[RRM Helper] Yoast meta description editor not found.');
+  return false;
+}
+
+// Sets text inside a Draft.js contenteditable via execCommand, the only reliable
+// way to drive Draft.js's React state from outside.
+function setDraftEditorText(editorEl, value) {
+  try {
+    editorEl.focus();
+    // Select all current content (placeholder or otherwise) so insertText replaces it.
+    const range = document.createRange();
+    range.selectNodeContents(editorEl);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('insertText', false, value);
+    if (!ok) {
+      // Last-ditch fallback: dispatch beforeinput manually
+      editorEl.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true, inputType: 'insertText', data: value
+      }));
+      editorEl.dispatchEvent(new InputEvent('input', {
+        bubbles: true, inputType: 'insertText', data: value
+      }));
+    }
+    return true;
+  } catch (e) {
+    console.error('[RRM Helper] Failed to set Yoast meta description:', e);
+    return false;
+  }
+}
+
+// Waits for the ACF "youtube_id" wrapper to appear (it's only added to the DOM
+// after the Videos category is checked) and fills the input.
+async function fillAcfYoutubeId(value) {
+  for (let i = 0; i < 30; i++) { // up to 6 seconds
+    const wrapper = document.querySelector('[data-name="youtube_id"]');
+    if (wrapper) {
+      const input = wrapper.querySelector(
+        'input[type="text"], input[type="number"], input:not([type]), textarea'
+      );
+      if (input) {
+        setNativeValue(input, value);
+        return true;
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] ACF [data-name="youtube_id"] field did not appear. Confirm the Videos category triggers the field group, and that the ACF field name is exactly "youtube_id".');
   return false;
 }
 
 // Sets the Author dropdown if present (Author meta box must be enabled in Screen Options).
-// Tries to match the option's display name case-insensitively.
+// Tries exact match first, then a "contains" match. Returns a structured result so
+// the toast can show the precise failure mode.
 async function setAuthor(name) {
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 50; i++) { // up to 10 seconds — author dropdown can load late
     const select = document.getElementById('post_author_override') ||
-                   document.querySelector('select[name="post_author_override"]');
+                   document.querySelector('select[name="post_author_override"]') ||
+                   document.querySelector('#authordiv select');
     if (select && select.options.length > 0) {
       const target = name.trim().toLowerCase();
+      // Exact match first
       for (const opt of select.options) {
         if (opt.text.trim().toLowerCase() === target) {
           select.value = opt.value;
           select.dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
+          return { ok: true };
         }
       }
-      console.warn('[RRM Helper] Author dropdown found but no option matched:', name,
-        '— available options:', Array.from(select.options).map(o => o.text));
-      return false;
+      // Then "contains" match (handles cases like "Welton Hong, MBA")
+      for (const opt of select.options) {
+        if (opt.text.trim().toLowerCase().includes(target)) {
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          return { ok: true, partial: true };
+        }
+      }
+      const opts = Array.from(select.options).map(o => o.text.trim());
+      console.warn('[RRM Helper] Author "%s" not in dropdown. Available options:', name, opts);
+      return { ok: false, reason: 'no-match', options: opts };
     }
     await new Promise(r => setTimeout(r, 200));
   }
-  console.warn('[RRM Helper] Author dropdown not found. Enable Author in Screen Options.');
-  return false;
+  console.warn('[RRM Helper] Author dropdown not found. Confirm Author is enabled in Screen Options.');
+  return { ok: false, reason: 'no-dropdown' };
 }
 
 function showToast(msg) {
