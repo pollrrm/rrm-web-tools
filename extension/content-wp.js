@@ -78,7 +78,11 @@ async function fillPost(p) {
   }
 
   // 2. Categories — supports a single top-level name OR a parent→child path.
-  ui.update('category', 'running');
+  // Wait for ACF to be ready first; otherwise on a freshly-loaded tab the
+  // category click can fire before ACF's listener is bound, and the ACF
+  // location rules never re-evaluate to show the youtube_id field.
+  ui.update('category', 'running', 'waiting for ACF');
+  await waitForAcfReady(5000);
   const catResult = fillCategoryPath(categories);
   if (catResult.failed.length === 0) {
     ui.update('category', 'done',
@@ -93,6 +97,16 @@ async function fillPost(p) {
   if (p.ytId) {
     ui.update('acf', 'running', 'waiting for ACF field');
     acfFilled = await fillAcfYoutubeId(p.ytId);
+
+    // If the field didn't appear, ACF may have missed our category click.
+    // Re-toggle the same checkboxes (uncheck + re-check) to fire fresh
+    // change events that any late-bound listener will catch, then retry.
+    if (!acfFilled && catResult.checkboxes.length > 0) {
+      ui.update('acf', 'running', 'retrying via category re-toggle');
+      await retoggleCategories(catResult.checkboxes);
+      acfFilled = await fillAcfYoutubeId(p.ytId);
+    }
+
     ui.update('acf', acfFilled ? 'done' : 'failed',
       acfFilled ? null : 'ACF field did not appear');
   }
@@ -133,11 +147,13 @@ async function fillPost(p) {
 // For a single-element path, behaves like the old top-level Videos lookup.
 // Subcategory matching is restricted to the previous level's <ul class="children">
 // so we never confuse, e.g., "Cemetery > Videos" with the desired "Funeral > Videos".
+// Returns {checked: string[], failed: string[], checkboxes: HTMLInputElement[]}.
+// `checkboxes` lets a caller re-toggle the exact same inputs (for ACF retry).
 function fillCategoryPath(path) {
   const checked = [];
   const failed = [];
+  const checkboxes = [];
 
-  // Top-level: direct children of #categorychecklist
   const topLabels = document.querySelectorAll('#categorychecklist > li > label');
   let parentLi = null;
   const wantTop = (path[0] || '').trim().toLowerCase();
@@ -147,23 +163,20 @@ function fillCategoryPath(path) {
       if (cb) {
         if (!cb.checked) cb.click();
         checked.push(path[0]);
-        parentLi = lbl.parentElement; // the <li>
+        checkboxes.push(cb);
+        parentLi = lbl.parentElement;
       }
       break;
     }
   }
   if (!parentLi) {
     failed.push(path[0]);
-    return { checked, failed };
+    return { checked, failed, checkboxes };
   }
 
-  // Subsequent levels — search inside the parent's children list only.
   for (let i = 1; i < path.length; i++) {
     const childUl = parentLi.querySelector(':scope > ul.children');
-    if (!childUl) {
-      failed.push(path[i]);
-      break;
-    }
+    if (!childUl) { failed.push(path[i]); break; }
     const childLabels = childUl.querySelectorAll(':scope > li > label');
     const want = path[i].trim().toLowerCase();
     let found = false;
@@ -173,19 +186,41 @@ function fillCategoryPath(path) {
         if (cb) {
           if (!cb.checked) cb.click();
           checked.push(path[i]);
+          checkboxes.push(cb);
           parentLi = lbl.parentElement;
           found = true;
         }
         break;
       }
     }
-    if (!found) {
-      failed.push(path[i]);
-      break;
-    }
+    if (!found) { failed.push(path[i]); break; }
   }
 
-  return { checked, failed };
+  return { checked, failed, checkboxes };
+}
+
+// Re-toggle a list of category checkboxes (uncheck + re-check) to fire fresh
+// `change` events. Used as an ACF retry trigger when the youtube_id field
+// didn't render after the initial click — typically because ACF's listener
+// wasn't bound yet on a freshly-loaded page.
+async function retoggleCategories(checkboxes) {
+  for (const cb of checkboxes) {
+    cb.click(); // uncheck
+    await new Promise(r => setTimeout(r, 80));
+    cb.click(); // re-check
+    await new Promise(r => setTimeout(r, 80));
+  }
+}
+
+// Wait for ACF's JS to initialize. ACF exposes window.acf once its bundle
+// loads; the .add_action / .data hooks confirm the framework is wired up.
+async function waitForAcfReady(timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (window.acf && (window.acf.add_action || window.acf.data)) return true;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return false;
 }
 
 // ---- Progress UI ----
