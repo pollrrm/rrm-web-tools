@@ -53,6 +53,7 @@ async function fillPost(p) {
 
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
+  if (p.publishDate) ui.addStep('date', `Publish: ${formatPublishLabel(p.publishDate)}`);
   ui.addStep('category', categoryStepLabel);
   if (p.ytId)     ui.addStep('acf',    'YouTube ID (ACF)');
   if (p.author)   ui.addStep('author', 'Author');
@@ -75,6 +76,14 @@ async function fillPost(p) {
     ui.update('title', 'done');
   } else {
     ui.update('title', 'skipped');
+  }
+
+  // 1b. Publish Date (instant — Classic Editor's date controls are always present)
+  if (p.publishDate) {
+    ui.update('date', 'running');
+    const dateOk = await fillPublishDate(p.publishDate);
+    ui.update('date', dateOk ? 'done' : 'failed',
+      dateOk ? null : 'date controls not found');
   }
 
   // 2. Categories — supports a single top-level name OR a parent→child path.
@@ -221,6 +230,59 @@ async function waitForAcfReady(timeoutMs = 5000) {
     await new Promise(r => setTimeout(r, 100));
   }
   return false;
+}
+
+// Sets the WordPress Classic Editor publish date via the standard meta-box
+// inputs. Expands the date editor (clicks "Edit"), writes the values, then
+// commits via the "OK" link so the date sticks even if the user clicks away.
+//
+// d shape: { year, month, day, hour, minute }
+async function fillPublishDate(d) {
+  if (!d) return false;
+
+  // Expand the date editor if collapsed. The Edit link is visible (offsetParent
+  // not null) when the editor is closed; once clicked it hides itself.
+  const editLink = document.querySelector('a.edit-timestamp');
+  if (editLink && editLink.offsetParent !== null) {
+    editLink.click();
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  const monthSel = document.getElementById('mm');
+  const dayInp   = document.getElementById('jj');
+  const yearInp  = document.getElementById('aa');
+  const hourInp  = document.getElementById('hh');
+  const minInp   = document.getElementById('mn');
+
+  if (!monthSel || !dayInp || !yearInp || !hourInp || !minInp) {
+    console.warn('[RRM Helper] Publish date controls not found.');
+    return false;
+  }
+
+  // Month select uses zero-padded values "01"–"12".
+  monthSel.value = String(d.month).padStart(2, '0');
+  monthSel.dispatchEvent(new Event('change', { bubbles: true }));
+
+  setNativeValue(dayInp,  String(d.day).padStart(2, '0'));
+  setNativeValue(yearInp, String(d.year));
+  setNativeValue(hourInp, String(d.hour).padStart(2, '0'));
+  setNativeValue(minInp,  String(d.minute).padStart(2, '0'));
+
+  // Click OK to commit. Without this, WP reverts to the original timestamp on Publish.
+  const okBtn = document.querySelector('a.save-timestamp');
+  if (okBtn) okBtn.click();
+  return true;
+}
+
+// Pretty-print "May 6, 2026 at 5:00 AM" for the progress panel step label.
+function formatPublishLabel(d) {
+  if (!d) return '';
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const m = months[(d.month - 1) | 0] || '?';
+  const h12 = ((d.hour + 11) % 12) + 1;
+  const ampm = d.hour < 12 ? 'AM' : 'PM';
+  const mm = String(d.minute).padStart(2, '0');
+  return `${m} ${d.day}, ${d.year} ${h12}:${mm} ${ampm}`;
 }
 
 // ---- Progress UI ----

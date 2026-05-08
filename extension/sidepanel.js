@@ -150,6 +150,23 @@ function toMetaDescription(text) {
     .trim();
 }
 
+// Parses a "Date of Posting" string from the email into a structured object.
+// Accepts "M/D", "MM/DD", "M/D/YY", "MM/DD/YYYY", "M-D", "M.D", etc.
+// Always sets time to 5:00 AM per the SOP. Defaults to current year if omitted.
+// Returns null if the string can't be parsed.
+function parsePublishDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (!m) return null;
+  const month = parseInt(m[1], 10);
+  const day   = parseInt(m[2], 10);
+  let year    = m[3] ? parseInt(m[3], 10) : new Date().getFullYear();
+  if (year < 100) year += 2000;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { year, month, day, hour: 5, minute: 0 };
+}
+
 function stripHashtags(text) {
   return text
     .split(/\r?\n/)
@@ -310,7 +327,8 @@ async function fillCurrentTab(entry, btn) {
     author: 'Welton Hong',
     thumbUrl: entry.thumbUrl,
     filename: entry.filename,
-    categories: niche.categories || ['Videos']
+    categories: niche.categories || ['Videos'],
+    publishDate: parsePublishDate(entry.date)
   };
   const originalText = btn.textContent;
   btn.classList.add('busy');
