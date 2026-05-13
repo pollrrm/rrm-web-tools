@@ -673,13 +673,20 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
       .trim();
   }
 
-  // Strip hashtags per SOP. Removes inline #tags and trims trailing empty lines.
+  // Strip hashtags per SOP. Removes inline #tags, trims trailing empty lines,
+  // and normalizes paragraph breaks so each sentence-ending line is followed
+  // by a blank line (matches the email's intended formatting whether the
+  // source used single or double newlines).
   function stripHashtags(text) {
     return text
       .split(/\r?\n/)
       .map(l => l.replace(/(^|\s)#[A-Za-z0-9_]+/g, '$1').replace(/\s+$/, ''))
       .join('\n')
       .replace(/\n{3,}/g, '\n\n')
+      // Treat each sentence as its own paragraph: insert a blank line after a
+      // sentence-ending punctuation when the next line is a non-blank line.
+      // Idempotent — won't double-space content that already has blank lines.
+      .replace(/([.!?])\n(?!\n)/g, '$1\n\n')
       .trim();
   }
 

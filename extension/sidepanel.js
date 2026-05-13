@@ -173,6 +173,10 @@ function stripHashtags(text) {
     .map(l => l.replace(/(^|\s)#[A-Za-z0-9_]+/g, '$1').replace(/\s+$/, ''))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
+    // Treat each sentence as its own paragraph: insert a blank line after a
+    // sentence-ending punctuation when the next line is a non-blank line.
+    // Idempotent — won't double-space content that already has blank lines.
+    .replace(/([.!?])\n(?!\n)/g, '$1\n\n')
     .trim();
 }
 
