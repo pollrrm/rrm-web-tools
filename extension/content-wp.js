@@ -2,15 +2,14 @@
 // Two entry points fill the same set of fields:
 //   1. chrome.storage.local "rrm_pending" — used by the YT tool's "Send to ..." buttons
 //   2. chrome.runtime message "RRM_FILL_POST"  — used by the extension's side panel
-// Fields filled:
-//   - Title
-//   - Yoast SEO Meta Description (Draft.js)
-//   - Categories (single top-level OR a path like ["Funeral","Videos"])
-//   - ACF "youtube_id" field (rendered after the category click)
-//   - Author dropdown (display name match)
-//
-// Content/TinyMCE is NOT auto-filled — too slow to mount reliably. Users copy-paste
-// the Content block from the YT tool / side panel manually.
+// Fields filled, in this order (fast → slow, with the most-blocking last):
+//   1. Title
+//   2. Publish Date (Classic Editor mm/jj/aa/hh/mn inputs + Edit/OK toggle)
+//   3. Content (textarea sync; TinyMCE visual syncs in the background)
+//   4. Author dropdown (display name match)
+//   5. Yoast SEO Meta Description (Draft.js)
+//   6. Categories (single top-level OR a path like ["Funeral","Videos"])
+//   7. ACF "youtube_id" field (rendered after the category click)
 
 // ---- Entry point 1: storage-based (existing flow) ----
 (async function () {
@@ -37,10 +36,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ---- Core fill logic — drives a step-by-step progress panel for visibility ----
-// Order optimized so fast fields finish first (instant feedback) and the slow,
-// async-mounted editors (Yoast Draft.js + TinyMCE) run last. Only ordering
-// constraint: Videos category MUST be set before ACF YouTube ID, since ACF's
-// location rules only render the field once Videos is checked.
+// Order optimized so fast / instant fields finish first (immediate visual
+// feedback), then progressively slower async fields. The most-blocking pair —
+// Categories + ACF YouTube ID — runs LAST so by the time we get there, ACF's
+// JS has had the longest possible time to fully initialize.
+// Constraint: Categories must precede ACF YouTube ID, since ACF's location
+// rules only render the youtube_id field once "Videos" is checked.
+// Content/TinyMCE is filled by writing the underlying textarea synchronously
+// (instant) and syncing the visual editor in the background (non-blocking).
 async function fillPost(p) {
   // Default category path is just ["Videos"] for back-compat with niches that
   // use a single top-level Videos category.
@@ -53,11 +56,12 @@ async function fillPost(p) {
 
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
-  if (p.publishDate) ui.addStep('date', `Publish: ${formatPublishLabel(p.publishDate)}`);
+  if (p.publishDate) ui.addStep('date',    `Publish: ${formatPublishLabel(p.publishDate)}`);
+  if (p.content)     ui.addStep('content', 'Content');
+  if (p.author)      ui.addStep('author',  'Author');
+  if (p.metaDesc)    ui.addStep('meta',    'Meta description (Yoast)');
   ui.addStep('category', categoryStepLabel);
-  if (p.ytId)     ui.addStep('acf',    'YouTube ID (ACF)');
-  if (p.author)   ui.addStep('author', 'Author');
-  if (p.metaDesc) ui.addStep('meta',   'Meta description (Yoast)');
+  if (p.ytId)        ui.addStep('acf',     'YouTube ID (ACF)');
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -86,10 +90,49 @@ async function fillPost(p) {
       dateOk ? null : 'date controls not found');
   }
 
-  // 2. Categories — supports a single top-level name OR a parent→child path.
-  // Wait for ACF to be ready first; otherwise on a freshly-loaded tab the
-  // category click can fire before ACF's listener is bound, and the ACF
-  // location rules never re-evaluate to show the youtube_id field.
+  // 1c. Content — write the underlying #content textarea NOW (instant). TinyMCE
+  // picks it up on mount. We also kick off a background sync that re-applies
+  // the value periodically to survive WP's autosave restore + TinyMCE re-init
+  // races. The sync is NOT awaited — Author / Meta / Categories / ACF run
+  // immediately so the slow iframe boot doesn't block them.
+  if (p.content) {
+    ui.update('content', 'running');
+    const html = toHtml(p.content);
+    const ta = document.getElementById('content');
+    if (ta) {
+      setNativeValue(ta, html);
+      syncTinyMCEInBackground(html); // fire-and-forget
+      ui.update('content', 'done', 'visual editor syncs in background');
+    } else {
+      ui.update('content', 'failed', '#content textarea not found');
+    }
+  }
+
+  // 2. Author (waits for dropdown if enabled in Screen Options)
+  let authorResult = { ok: false, reason: 'skipped' };
+  if (p.author) {
+    ui.update('author', 'running', 'waiting for dropdown');
+    authorResult = await setAuthor(p.author);
+    if (authorResult.ok) {
+      ui.update('author', 'done', authorResult.partial ? 'partial match' : null);
+    } else if (authorResult.reason === 'no-dropdown') {
+      ui.update('author', 'failed', 'enable Author in Screen Options');
+    } else {
+      ui.update('author', 'failed', `"${p.author}" not in list — see console`);
+    }
+  }
+
+  // 3. Yoast SEO meta description (Draft.js, mounts async)
+  let yoastFilled = false;
+  if (p.metaDesc) {
+    ui.update('meta', 'running', 'waiting for Yoast');
+    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
+    ui.update('meta', yoastFilled ? 'done' : 'failed',
+      yoastFilled ? null : 'field not found');
+  }
+
+  // 4. Categories — supports a single top-level name OR a parent→child path.
+  // Running AFTER author + meta gives ACF more time to fully initialize.
   ui.update('category', 'running', 'waiting for ACF');
   await waitForAcfReady(5000);
   const catResult = fillCategoryPath(categories);
@@ -101,7 +144,7 @@ async function fillPost(p) {
       `failed at "${catResult.failed[0]}"${catResult.checked.length ? ` (got: ${catResult.checked.join(' → ')})` : ''}`);
   }
 
-  // 3. ACF YouTube ID (waits for ACF to render after category click)
+  // 5. ACF YouTube ID (waits for ACF to render after category click)
   let acfFilled = false;
   if (p.ytId) {
     ui.update('acf', 'running', 'waiting for ACF field');
@@ -119,32 +162,6 @@ async function fillPost(p) {
     ui.update('acf', acfFilled ? 'done' : 'failed',
       acfFilled ? null : 'ACF field did not appear');
   }
-
-  // 4. Author (waits for dropdown if enabled in Screen Options)
-  let authorResult = { ok: false, reason: 'skipped' };
-  if (p.author) {
-    ui.update('author', 'running', 'waiting for dropdown');
-    authorResult = await setAuthor(p.author);
-    if (authorResult.ok) {
-      ui.update('author', 'done', authorResult.partial ? 'partial match' : null);
-    } else if (authorResult.reason === 'no-dropdown') {
-      ui.update('author', 'failed', 'enable Author in Screen Options');
-    } else {
-      ui.update('author', 'failed', `"${p.author}" not in list — see console`);
-    }
-  }
-
-  // 5. Yoast SEO meta description (Draft.js, mounts async)
-  let yoastFilled = false;
-  if (p.metaDesc) {
-    ui.update('meta', 'running', 'waiting for Yoast');
-    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
-    ui.update('meta', yoastFilled ? 'done' : 'failed',
-      yoastFilled ? null : 'field not found');
-  }
-
-  // Note: Content (TinyMCE) is intentionally NOT filled here — the iframe
-  // boot is too slow. The user copy-pastes the Content block manually.
 
   const allOk = ui.allDone();
   ui.finish(allOk);
@@ -440,8 +457,66 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event('keyup', { bubbles: true }));
 }
 
-// (TinyMCE / Content fill removed — too slow to mount reliably. The Content
-// block in the YT tool / side panel has a Copy button; users paste manually.)
+// Convert plain multi-paragraph text to HTML paragraphs. Preserves any HTML
+// already present. Used to write into the #content textarea so TinyMCE renders
+// proper paragraphs when it mounts (and so wpautop is a no-op on save).
+function toHtml(text) {
+  if (/<\w+/.test(text)) return text;
+  return text
+    .split(/\n{2,}/)
+    .map(para => `<p>${para.trim().replace(/\n/g, '<br>')}</p>`)
+    .filter(p => p !== '<p></p>')
+    .join('\n');
+}
+
+// Best-effort TinyMCE + textarea sync, in the background. Other fill steps
+// don't await this so they aren't blocked by the slow iframe boot.
+//
+// Why repeated re-writes: WordPress can blank our content moments after the
+// first write — TinyMCE init reading an empty iframe and syncing back to the
+// textarea, autosave restoring an old draft, heartbeat plugins, etc. To
+// survive whichever overwrite happens last, we re-apply the value several
+// times across ~6 seconds.
+async function syncTinyMCEInBackground(html) {
+  const ta = document.getElementById('content');
+
+  // Initial wait for TinyMCE to mount; up to ~10 seconds.
+  let mounted = false;
+  for (let i = 0; i < 50; i++) {
+    if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
+      mounted = true;
+      try {
+        const ed = window.tinymce.get('content');
+        ed.setContent(html);
+        ed.save();
+      } catch {/* mid-mount race — keep going */}
+      break;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Reinforcement pass: re-apply textarea + TinyMCE every ~1s for 6 ticks.
+  // Each iteration only writes if the value drifted, so this is cheap.
+  for (let i = 0; i < 6; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      if (ta && ta.value !== html) setNativeValue(ta, html);
+      if (mounted && window.tinymce && window.tinymce.get) {
+        const ed = window.tinymce.get('content');
+        if (ed && ed.getContent && ed.getContent() !== html) {
+          ed.setContent(html);
+          ed.save();
+        }
+      } else if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
+        // TinyMCE mounted late — catch up.
+        mounted = true;
+        const ed = window.tinymce.get('content');
+        ed.setContent(html);
+        ed.save();
+      }
+    } catch {/* ignore */}
+  }
+}
 
 // Fills Yoast SEO meta description.
 // Modern Yoast (18+) uses a Draft.js contenteditable, NOT a textarea. Direct
