@@ -457,15 +457,17 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event('keyup', { bubbles: true }));
 }
 
-// Convert plain multi-paragraph text to HTML paragraphs. Preserves any HTML
-// already present. Used to write into the #content textarea so TinyMCE renders
-// proper paragraphs when it mounts (and so wpautop is a no-op on save).
+// Convert plain text to HTML paragraphs. Preserves any HTML already present.
+// Every line break — single or double — becomes a paragraph boundary, so we
+// emit <p>...</p>\n<p>...</p> rather than <p>...<br>...</p>. Used to write
+// into the #content textarea so TinyMCE renders the right blocks on mount.
 function toHtml(text) {
   if (/<\w+/.test(text)) return text;
   return text
-    .split(/\n{2,}/)
-    .map(para => `<p>${para.trim().replace(/\n/g, '<br>')}</p>`)
-    .filter(p => p !== '<p></p>')
+    .split(/\n+/) // any run of newlines = paragraph boundary
+    .map(para => para.trim())
+    .filter(para => para.length > 0)
+    .map(para => `<p>${para}</p>`)
     .join('\n');
 }
 
