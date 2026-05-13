@@ -12,6 +12,7 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 |------|---------|-------------|
 | [YT Thumbnail Downloader](#1-yt-thumbnail-downloader) | Bulk-extract YouTube thumbnails + post fields from the video posting task email | Weekly video blog posting (3-4 posts per niche site) |
 | [DOCX Batch → WordPress](#2-docx-batch--wordpress) | Convert a site's monthly ZIP of `.docx` articles into WordPress-ready posts with paired featured images and quality checks | Monthly blog batches per site |
+| [PDF → JPG](#3-pdf--jpg) | Convert selected PDF pages to JPG with optional crop, resize, and quality tuning | Pulling page-images out of brochures, flyers, or one-off PDFs for web use |
 
 All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
 
@@ -168,6 +169,49 @@ Notes:
 
 ---
 
+## 3. PDF → JPG
+
+**File:** [`pdf-to-jpg.html`](./pdf-to-jpg.html)
+**SOP:** Ad-hoc — image extraction from PDFs
+
+### What it does
+
+Drop a PDF and the tool will:
+
+- Render any subset of pages to a canvas in-browser via [PDF.js](https://mozilla.github.io/pdf.js/).
+- Let you **select pages** with a flexible range expression: `all`, `1,3,5`, `5-8`, or a mix (`1,3,5-8,12`). Quick pills for *All*, *Odd*, *Even*, and *First page only*.
+- Let you **draw a crop rectangle** on a live preview of the first selected page. The crop is stored as a fraction of the page so the **same crop applies to every selected page** (useful when every page has the same layout — e.g. trimming margins off a multi-page brochure).
+- **Resize** the output via a *Max Width (px)* cap (aspect ratio preserved).
+- Tune **JPG quality** with a slider (10–100, default 85) and **render scale** (1×–4×, default 2× — higher means sharper source render before resize).
+- Output one JPG per page, named `{pdf-name}-page-{NN}.jpg` with zero-padded numbering.
+- Download images individually or grab everything as a single **ZIP**.
+
+### Workflow
+
+1. Open the tool. Click **Choose File** and pick your PDF.
+2. Enter the pages you want in the **Pages** field — leave blank or type `all` for everything, otherwise something like `1,3,5-8`.
+3. (Optional) Open **Crop** and drag a rectangle on the preview. Use **Clear crop** to start over.
+4. Adjust **JPG Quality**, **Render Scale**, and **Max Width** as needed.
+5. Click **Convert to JPG**. Previews appear in a grid with file size and dimensions.
+6. Click **Download** on any card, or **Download All (ZIP)** to grab the full set.
+
+### When to reach for each setting
+
+| Setting | Default | When to change |
+|---------|---------|----------------|
+| JPG Quality | 85 | Bump to 95+ for print/zoomable use. Drop to 60–70 to shrink file size for fast-loading web galleries. |
+| Render Scale | 2× | Raise to 3–4× if the PDF has fine type or detailed graphics you want crisp. Lower to 1× for quick previews. |
+| Max Width | (none) | Set to `1920` (or whatever your CMS expects) to keep file sizes web-friendly without losing too much detail. |
+| Crop | (none) | Set when every page has the same layout and you want to strip margins, headers, or footers uniformly. |
+
+### Notes
+
+- All processing is **client-side** — the PDF never leaves the browser. PDF.js and JSZip are loaded from CDN.
+- A white background is painted under transparent PDF pages, so JPG (no alpha) renders cleanly.
+- Cropping is per-document, not per-page. If pages have different layouts and you need different crops, run the tool once per page (or once per group of similarly-laid-out pages).
+
+---
+
 ## How to use (team)
 
 1. Visit the **Live site** URL above.
@@ -219,8 +263,9 @@ npx serve .
 External dependencies used today (loaded from CDN, no install):
 
 - **mammoth** — `.docx` → HTML conversion (DOCX tool)
-- **JSZip** — in-browser ZIP unpacking (DOCX tool)
+- **JSZip** — in-browser ZIP unpacking and ZIP creation (DOCX tool, PDF → JPG tool)
 - **LanguageTool public API** — grammar checking (DOCX tool)
+- **PDF.js** — in-browser PDF rendering (PDF → JPG tool)
 
 If you need an offline build for any tool, all dependencies above can be inlined into the HTML file.
 
@@ -233,6 +278,7 @@ rrm-web-tools/
 ├── index.html                       # Landing page linking to each tool
 ├── yt-thumbnail-downloader.html     # YT Thumbnail Downloader
 ├── docx-batch-to-wordpress.html     # DOCX Batch → WordPress
+├── pdf-to-jpg.html                  # PDF → JPG converter
 └── README.md                        # This file
 ```
 

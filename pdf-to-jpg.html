@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF → JPG — RRM Web Support Tools</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 1080px;
+    margin: 30px auto;
+    padding: 0 20px 60px;
+    background: #0f1115;
+    color: #e6e6e6;
+    line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: #8a93a3; margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #8a93a3;
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #262a33;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    transition: color .15s, border-color .15s;
+  }
+  .back-link:hover { color: #e6e6e6; border-color: #5b8def; }
+  .card {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #8a93a3;
+    margin: 0 0 14px;
+  }
+  label { display: block; font-size: 13px; color: #b8bdc8; margin: 12px 0 6px; }
+  label .hint { color: #8a93a3; font-weight: normal; font-size: 11px; margin-left: 6px; }
+  input[type=text], input[type=number], select {
+    width: 100%;
+    padding: 9px 11px;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    color: #e6e6e6;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input[type=range] { width: 100%; }
+  input:focus, select:focus { outline: none; border-color: #5b8def; }
+  input[type=file] {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    background: #0f1115;
+    border: 1px dashed #2a2f3a;
+    border-radius: 6px;
+    color: #b8bdc8;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  input[type=file]:hover { border-color: #5b8def; }
+  button {
+    background: #5b8def;
+    color: white;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: #4a7ce0; }
+  button:disabled {
+    background: #2a2f3a;
+    color: #6a7180;
+    cursor: not-allowed;
+  }
+  button.secondary { background: #2a2f3a; }
+  button.secondary:hover { background: #353b48; }
+  button.ghost {
+    background: transparent;
+    border: 1px solid #2a2f3a;
+    color: #b8bdc8;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  button.ghost:hover { border-color: #5b8def; color: #e6e6e6; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .pill {
+    padding: 4px 10px;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 999px;
+    font-size: 12px;
+    color: #b8bdc8;
+    cursor: pointer;
+    user-select: none;
+  }
+  .pill:hover { border-color: #5b8def; }
+  .pill.active { background: #5b8def; border-color: #5b8def; color: white; }
+  .status {
+    font-size: 12px;
+    color: #8a93a3;
+    margin-top: 10px;
+    min-height: 16px;
+  }
+  .status.ok { color: #6cd17b; }
+  .status.err { color: #ff7a8a; }
+  .crop-wrap {
+    position: relative;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    padding: 10px;
+    max-width: 100%;
+    overflow: auto;
+  }
+  .crop-canvas-wrap {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+  }
+  .crop-canvas-wrap canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+  .crop-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    cursor: crosshair;
+    user-select: none;
+    touch-action: none;
+  }
+  .crop-box {
+    position: absolute;
+    border: 1.5px dashed #5b8def;
+    background: rgba(91, 141, 239, 0.12);
+    pointer-events: none;
+  }
+  .crop-shade {
+    position: absolute;
+    background: rgba(0,0,0,0.55);
+    pointer-events: none;
+  }
+  .results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .result-item {
+    background: #0f1115;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .result-item img {
+    width: 100%;
+    background: #000;
+    border-radius: 4px;
+    display: block;
+  }
+  .result-item .name {
+    font-size: 12px;
+    color: #c8a8ff;
+    margin: 8px 0 2px;
+    word-break: break-all;
+    font-weight: 600;
+  }
+  .result-item .meta {
+    font-size: 11px;
+    color: #8a93a3;
+    margin-bottom: 8px;
+  }
+  .result-item button { width: 100%; padding: 7px 10px; font-size: 12px; }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .hidden { display: none !important; }
+  .val-tag {
+    display: inline-block;
+    min-width: 38px;
+    text-align: right;
+    color: #5b8def;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    margin-left: 8px;
+  }
+  details > summary {
+    cursor: pointer;
+    color: #b8bdc8;
+    font-size: 13px;
+    padding: 4px 0;
+    list-style: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: #8a93a3; }
+  details[open] > summary::before { content: "▾ "; }
+</style>
+</head>
+<body>
+
+<a href="./index.html" class="back-link">← All Tools</a>
+<h1>PDF → JPG</h1>
+<p class="subtitle">Convert pages from a PDF into JPG images. Pick pages, crop, resize, and tune quality — everything runs in your browser.</p>
+
+<!-- Step 1: Upload -->
+<div class="card">
+  <h2>1. PDF File</h2>
+  <input type="file" id="fileInput" accept="application/pdf,.pdf">
+  <div class="status" id="fileStatus"></div>
+</div>
+
+<!-- Step 2: Page selection -->
+<div class="card hidden" id="pageCard">
+  <h2>2. Pages to Convert</h2>
+  <label>
+    Pages
+    <span class="hint">e.g. <code>1,3,5-8</code> &nbsp;·&nbsp; leave blank or use <code>all</code> for every page</span>
+  </label>
+  <input type="text" id="pageRange" placeholder="all">
+  <div class="pill-row" id="pagePills"></div>
+</div>
+
+<!-- Step 3: Options -->
+<div class="card hidden" id="optsCard">
+  <h2>3. Conversion Options</h2>
+
+  <div class="grid-3">
+    <div>
+      <label>JPG Quality <span class="val-tag" id="qualityVal">85</span></label>
+      <input type="range" id="quality" min="10" max="100" step="1" value="85">
+    </div>
+    <div>
+      <label>Render Scale <span class="hint">source DPI</span> <span class="val-tag" id="scaleVal">2.0×</span></label>
+      <input type="range" id="scale" min="1" max="4" step="0.25" value="2">
+    </div>
+    <div>
+      <label>Max Width (px) <span class="hint">blank = no cap</span></label>
+      <input type="number" id="maxWidth" placeholder="e.g. 1920" min="100" step="10">
+    </div>
+  </div>
+
+  <details style="margin-top: 14px;">
+    <summary>Crop (optional — applied uniformly to all selected pages)</summary>
+    <div style="margin-top: 12px;">
+      <div class="toolbar">
+        <button class="ghost" id="cropToggleBtn">Draw crop box on preview</button>
+        <button class="ghost" id="cropClearBtn">Clear crop</button>
+        <span class="status" id="cropStatus" style="margin-top: 0;">No crop set — full page will be exported.</span>
+      </div>
+      <div class="crop-wrap hidden" id="cropWrap">
+        <div class="crop-canvas-wrap" id="cropCanvasWrap">
+          <canvas id="cropCanvas"></canvas>
+          <div class="crop-overlay" id="cropOverlay">
+            <div class="crop-shade" id="shadeTop"></div>
+            <div class="crop-shade" id="shadeBottom"></div>
+            <div class="crop-shade" id="shadeLeft"></div>
+            <div class="crop-shade" id="shadeRight"></div>
+            <div class="crop-box hidden" id="cropBox"></div>
+          </div>
+        </div>
+        <p class="subtitle" style="margin: 10px 0 0;">Drag on the preview to draw a crop area. Coordinates are stored as a fraction of the page so the same crop applies to every selected page.</p>
+      </div>
+    </div>
+  </details>
+
+  <div class="row" style="margin-top: 18px;">
+    <button id="convertBtn">Convert to JPG</button>
+    <span class="status" id="convertStatus" style="margin-top: 0;"></span>
+  </div>
+</div>
+
+<!-- Step 4: Results -->
+<div class="card hidden" id="resultsCard">
+  <h2>4. Results</h2>
+  <div class="toolbar">
+    <button id="downloadAllBtn">Download All (ZIP)</button>
+    <span class="status" id="resultsStatus" style="margin-top: 0;"></span>
+  </div>
+  <div class="results" id="resultsGrid"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const $ = (id) => document.getElementById(id);
+
+  const state = {
+    pdfDoc: null,
+    pdfName: 'document',
+    numPages: 0,
+    previewPageNum: 1,
+    previewViewport: null,   // viewport used to render the preview canvas
+    crop: null,              // { x, y, w, h } in fraction (0-1) of page
+    results: [],             // [{ pageNum, blob, url, filename, width, height }]
+  };
+
+  // ---------- File load ----------
+  $('fileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    state.pdfName = file.name.replace(/\.pdf$/i, '') || 'document';
+    $('fileStatus').textContent = 'Loading PDF…';
+    $('fileStatus').className = 'status';
+    try {
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      state.pdfDoc = doc;
+      state.numPages = doc.numPages;
+      state.previewPageNum = 1;
+      state.crop = null;
+      state.results = [];
+      $('fileStatus').textContent = `Loaded ${file.name} — ${doc.numPages} page${doc.numPages === 1 ? '' : 's'}.`;
+      $('fileStatus').className = 'status ok';
+      $('pageCard').classList.remove('hidden');
+      $('optsCard').classList.remove('hidden');
+      $('resultsCard').classList.add('hidden');
+      $('pageRange').value = '';
+      renderPagePills();
+      hideCropUI();
+      $('cropStatus').textContent = 'No crop set — full page will be exported.';
+    } catch (err) {
+      console.error(err);
+      $('fileStatus').textContent = 'Could not read PDF: ' + err.message;
+      $('fileStatus').className = 'status err';
+    }
+  });
+
+  // ---------- Page selection ----------
+  function renderPagePills() {
+    const wrap = $('pagePills');
+    wrap.innerHTML = '';
+    const max = state.numPages;
+    if (max === 0) return;
+    const all = document.createElement('span');
+    all.className = 'pill';
+    all.textContent = 'All ' + max;
+    all.addEventListener('click', () => { $('pageRange').value = 'all'; });
+    wrap.appendChild(all);
+
+    if (max > 1) {
+      const odd = document.createElement('span');
+      odd.className = 'pill';
+      odd.textContent = 'Odd';
+      odd.addEventListener('click', () => {
+        const arr = [];
+        for (let i = 1; i <= max; i += 2) arr.push(i);
+        $('pageRange').value = compactRange(arr);
+      });
+      wrap.appendChild(odd);
+
+      const even = document.createElement('span');
+      even.className = 'pill';
+      even.textContent = 'Even';
+      even.addEventListener('click', () => {
+        const arr = [];
+        for (let i = 2; i <= max; i += 2) arr.push(i);
+        $('pageRange').value = compactRange(arr);
+      });
+      wrap.appendChild(even);
+    }
+
+    const first = document.createElement('span');
+    first.className = 'pill';
+    first.textContent = 'First page only';
+    first.addEventListener('click', () => { $('pageRange').value = '1'; });
+    wrap.appendChild(first);
+  }
+
+  function compactRange(nums) {
+    if (!nums.length) return '';
+    nums = [...new Set(nums)].sort((a, b) => a - b);
+    const out = [];
+    let start = nums[0], prev = nums[0];
+    for (let i = 1; i < nums.length; i++) {
+      if (nums[i] === prev + 1) { prev = nums[i]; continue; }
+      out.push(start === prev ? '' + start : start + '-' + prev);
+      start = nums[i]; prev = nums[i];
+    }
+    out.push(start === prev ? '' + start : start + '-' + prev);
+    return out.join(',');
+  }
+
+  function parsePageRange(input, max) {
+    const s = (input || '').trim().toLowerCase();
+    if (!s || s === 'all') {
+      return Array.from({ length: max }, (_, i) => i + 1);
+    }
+    const out = new Set();
+    for (const part of s.split(',')) {
+      const p = part.trim();
+      if (!p) continue;
+      const m = p.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) {
+        let a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+        if (a > b) [a, b] = [b, a];
+        for (let i = Math.max(1, a); i <= Math.min(max, b); i++) out.add(i);
+      } else if (/^\d+$/.test(p)) {
+        const n = parseInt(p, 10);
+        if (n >= 1 && n <= max) out.add(n);
+      } else {
+        throw new Error('Bad page token: "' + p + '"');
+      }
+    }
+    return [...out].sort((a, b) => a - b);
+  }
+
+  // ---------- Quality / Scale slider labels ----------
+  $('quality').addEventListener('input', (e) => { $('qualityVal').textContent = e.target.value; });
+  $('scale').addEventListener('input', (e) => {
+    $('scaleVal').textContent = parseFloat(e.target.value).toFixed(2) + '×';
+  });
+
+  // ---------- Crop UI ----------
+  $('cropToggleBtn').addEventListener('click', async () => {
+    if ($('cropWrap').classList.contains('hidden')) {
+      await showCropUI();
+    } else {
+      hideCropUI();
+    }
+  });
+
+  $('cropClearBtn').addEventListener('click', () => {
+    state.crop = null;
+    $('cropBox').classList.add('hidden');
+    updateShade(null);
+    $('cropStatus').textContent = 'No crop set — full page will be exported.';
+  });
+
+  async function showCropUI() {
+    if (!state.pdfDoc) return;
+    // Pick the first page in the selection (or page 1) for the preview.
+    let firstPage = 1;
+    try {
+      const sel = parsePageRange($('pageRange').value, state.numPages);
+      if (sel.length) firstPage = sel[0];
+    } catch (_) { /* ignore */ }
+    state.previewPageNum = firstPage;
+
+    const page = await state.pdfDoc.getPage(firstPage);
+    // Render at a max width of ~700px for the preview.
+    const baseViewport = page.getViewport({ scale: 1 });
+    const maxPreviewW = 700;
+    const previewScale = Math.min(2, maxPreviewW / baseViewport.width);
+    const viewport = page.getViewport({ scale: previewScale });
+    state.previewViewport = viewport;
+
+    const canvas = $('cropCanvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    $('cropWrap').classList.remove('hidden');
+
+    // If a crop already exists, show it on this preview.
+    drawSavedCrop();
+    setupCropDrag();
+  }
+
+  function hideCropUI() {
+    $('cropWrap').classList.add('hidden');
+  }
+
+  function drawSavedCrop() {
+    if (!state.crop || !state.previewViewport) {
+      $('cropBox').classList.add('hidden');
+      updateShade(null);
+      return;
+    }
+    const c = state.crop;
+    const w = state.previewViewport.width;
+    const h = state.previewViewport.height;
+    const box = $('cropBox');
+    box.style.left   = (c.x * w) + 'px';
+    box.style.top    = (c.y * h) + 'px';
+    box.style.width  = (c.w * w) + 'px';
+    box.style.height = (c.h * h) + 'px';
+    box.classList.remove('hidden');
+    updateShade(c);
+  }
+
+  function updateShade(crop) {
+    const shTop = $('shadeTop'), shBot = $('shadeBottom'), shL = $('shadeLeft'), shR = $('shadeRight');
+    if (!crop) {
+      [shTop, shBot, shL, shR].forEach(el => { el.style.width = el.style.height = '0'; });
+      return;
+    }
+    const pct = (n) => (n * 100) + '%';
+    shTop.style.left = '0'; shTop.style.top = '0';
+    shTop.style.width = '100%'; shTop.style.height = pct(crop.y);
+
+    shBot.style.left = '0'; shBot.style.top = pct(crop.y + crop.h);
+    shBot.style.width = '100%'; shBot.style.height = pct(1 - (crop.y + crop.h));
+
+    shL.style.left = '0'; shL.style.top = pct(crop.y);
+    shL.style.width = pct(crop.x); shL.style.height = pct(crop.h);
+
+    shR.style.left = pct(crop.x + crop.w); shR.style.top = pct(crop.y);
+    shR.style.width = pct(1 - (crop.x + crop.w)); shR.style.height = pct(crop.h);
+  }
+
+  function setupCropDrag() {
+    const overlay = $('cropOverlay');
+    let dragging = false;
+    let startX = 0, startY = 0;
+
+    function pt(ev) {
+      const r = overlay.getBoundingClientRect();
+      const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+      const cy = (ev.touches ? ev.touches[0].clientY : ev.clientY) - r.top;
+      return {
+        x: Math.max(0, Math.min(r.width, cx)) / r.width,
+        y: Math.max(0, Math.min(r.height, cy)) / r.height,
+      };
+    }
+
+    const onDown = (ev) => {
+      ev.preventDefault();
+      dragging = true;
+      const p = pt(ev);
+      startX = p.x; startY = p.y;
+      state.crop = { x: p.x, y: p.y, w: 0, h: 0 };
+      drawSavedCrop();
+    };
+    const onMove = (ev) => {
+      if (!dragging) return;
+      ev.preventDefault();
+      const p = pt(ev);
+      const x = Math.min(startX, p.x);
+      const y = Math.min(startY, p.y);
+      const w = Math.abs(p.x - startX);
+      const h = Math.abs(p.y - startY);
+      state.crop = { x, y, w, h };
+      drawSavedCrop();
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      if (state.crop && (state.crop.w < 0.01 || state.crop.h < 0.01)) {
+        state.crop = null;
+        $('cropBox').classList.add('hidden');
+        updateShade(null);
+        $('cropStatus').textContent = 'No crop set — full page will be exported.';
+      } else if (state.crop) {
+        const c = state.crop;
+        $('cropStatus').textContent =
+          `Crop set: ${(c.w * 100).toFixed(1)}% × ${(c.h * 100).toFixed(1)}% of page` +
+          ` (offset ${(c.x * 100).toFixed(1)}%, ${(c.y * 100).toFixed(1)}%).`;
+      }
+    };
+
+    // Replace listeners by re-cloning the overlay node (prevents stacking across reopens).
+    const fresh = overlay.cloneNode(true);
+    overlay.parentNode.replaceChild(fresh, overlay);
+    // Re-grab references to the children that got cloned.
+    fresh.addEventListener('mousedown', onDown);
+    fresh.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    fresh.addEventListener('touchstart', onDown, { passive: false });
+    fresh.addEventListener('touchmove', onMove, { passive: false });
+    fresh.addEventListener('touchend', onUp);
+  }
+
+  // ---------- Convert ----------
+  $('convertBtn').addEventListener('click', async () => {
+    if (!state.pdfDoc) return;
+    let pages;
+    try {
+      pages = parsePageRange($('pageRange').value, state.numPages);
+    } catch (e) {
+      setStatus('convertStatus', e.message, 'err');
+      return;
+    }
+    if (!pages.length) {
+      setStatus('convertStatus', 'No pages selected.', 'err');
+      return;
+    }
+
+    // Free prior result URLs.
+    state.results.forEach(r => URL.revokeObjectURL(r.url));
+    state.results = [];
+    $('resultsGrid').innerHTML = '';
+    $('resultsCard').classList.remove('hidden');
+
+    const quality = parseInt($('quality').value, 10) / 100;
+    const renderScale = parseFloat($('scale').value);
+    const maxW = parseInt($('maxWidth').value, 10);
+    const hasMaxW = Number.isFinite(maxW) && maxW > 0;
+    const btn = $('convertBtn');
+    btn.disabled = true;
+
+    try {
+      for (let i = 0; i < pages.length; i++) {
+        const pageNum = pages[i];
+        setStatus('convertStatus', `Rendering page ${pageNum} (${i + 1}/${pages.length})…`);
+        const item = await renderPageToJpg(pageNum, { renderScale, quality, maxW: hasMaxW ? maxW : null, crop: state.crop });
+        state.results.push(item);
+        appendResultCard(item);
+      }
+      setStatus('convertStatus', `Done — ${state.results.length} image${state.results.length === 1 ? '' : 's'} generated.`, 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('convertStatus', 'Error: ' + err.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function renderPageToJpg(pageNum, opts) {
+    const page = await state.pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: opts.renderScale });
+
+    // Render full page to an offscreen canvas at render-scale resolution.
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = Math.ceil(viewport.width);
+    fullCanvas.height = Math.ceil(viewport.height);
+    const fullCtx = fullCanvas.getContext('2d');
+    fullCtx.fillStyle = '#ffffff';
+    fullCtx.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
+    await page.render({ canvasContext: fullCtx, viewport }).promise;
+
+    // Crop region (in fullCanvas pixels).
+    let sx = 0, sy = 0, sw = fullCanvas.width, sh = fullCanvas.height;
+    if (opts.crop) {
+      sx = Math.max(0, Math.floor(opts.crop.x * fullCanvas.width));
+      sy = Math.max(0, Math.floor(opts.crop.y * fullCanvas.height));
+      sw = Math.max(1, Math.floor(opts.crop.w * fullCanvas.width));
+      sh = Math.max(1, Math.floor(opts.crop.h * fullCanvas.height));
+      if (sx + sw > fullCanvas.width) sw = fullCanvas.width - sx;
+      if (sy + sh > fullCanvas.height) sh = fullCanvas.height - sy;
+    }
+
+    // Compute output size with optional max width.
+    let outW = sw, outH = sh;
+    if (opts.maxW && outW > opts.maxW) {
+      const r = opts.maxW / outW;
+      outW = Math.round(outW * r);
+      outH = Math.round(outH * r);
+    }
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, outW, outH);
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = 'high';
+    outCtx.drawImage(fullCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
+
+    const blob = await new Promise(res => outCanvas.toBlob(res, 'image/jpeg', opts.quality));
+    const url = URL.createObjectURL(blob);
+    const padN = String(pageNum).padStart(String(state.numPages).length, '0');
+    const filename = `${safeName(state.pdfName)}-page-${padN}.jpg`;
+    return { pageNum, blob, url, filename, width: outW, height: outH };
+  }
+
+  function safeName(s) {
+    return s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'document';
+  }
+
+  function appendResultCard(item) {
+    const div = document.createElement('div');
+    div.className = 'result-item';
+    const sizeKb = (item.blob.size / 1024);
+    const sizeStr = sizeKb >= 1024 ? (sizeKb / 1024).toFixed(2) + ' MB' : sizeKb.toFixed(0) + ' KB';
+    div.innerHTML = `
+      <img src="${item.url}" alt="Page ${item.pageNum}">
+      <div class="name">${item.filename}</div>
+      <div class="meta">Page ${item.pageNum} · ${item.width}×${item.height} · ${sizeStr}</div>
+      <button class="secondary" data-page="${item.pageNum}">Download</button>
+    `;
+    div.querySelector('button').addEventListener('click', () => triggerDownload(item.blob, item.filename));
+    $('resultsGrid').appendChild(div);
+  }
+
+  function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ---------- Download all (zip) ----------
+  $('downloadAllBtn').addEventListener('click', async () => {
+    if (!state.results.length) return;
+    setStatus('resultsStatus', 'Building ZIP…');
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder(safeName(state.pdfName));
+      for (const r of state.results) {
+        folder.file(r.filename, r.blob);
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      triggerDownload(blob, `${safeName(state.pdfName)}-jpgs.zip`);
+      setStatus('resultsStatus', `ZIP ready — ${state.results.length} files.`, 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('resultsStatus', 'ZIP failed: ' + err.message, 'err');
+    }
+  });
+
+  // ---------- Helpers ----------
+  function setStatus(id, text, cls) {
+    const el = $(id);
+    el.textContent = text;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+})();
+</script>
+
+</body>
+</html>
