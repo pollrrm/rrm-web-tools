@@ -239,12 +239,16 @@ The repo is designed to grow as we automate more SOPs.
 
 - **File naming:** kebab-case, descriptive (`yt-thumbnail-downloader.html`, not `tool1.html`).
 - **Client-side only:** no API keys, no backend services. If a workflow needs server-side logic (sending email, hitting a private API, scheduled execution), build it in **n8n** instead and link to that workflow from here.
-- **Consistent dark theme** so the team gets a familiar UX:
-  - Background `#0f1115`
-  - Panel `#181b22`
-  - Border `#262a33`
-  - Text `#e6e6e6`
-  - Accent `#5b8def`
+- **Consistent themeable look** so the team gets a familiar UX. Every tool ships a sun/moon toggle (top-right) that swaps between dark and light. State persists in `localStorage` under `rrm-tools-theme` and falls back to the OS `prefers-color-scheme` on first visit.
+  - Use CSS custom properties (variables) for every color, not hardcoded hex values. The standard token set per tool:
+    - `--bg`, `--panel`, `--panel-2` (or `--panel2`) — surfaces
+    - `--border`, `--border-strong` — outlines
+    - `--text`, `--text-muted`, `--text-dim` (or `--muted`) — type
+    - `--accent`, `--accent-hover` — primary action
+    - `--ok`, `--warn`, `--error` — status
+  - Inline the `<script>` that reads `localStorage`/`prefers-color-scheme` in `<head>` so the theme applies before paint (no flash of wrong theme). Inline the toggle-injection script at the end of `<body>`. Copy the snippets verbatim from any existing tool.
+  - Dark palette: bg `#0f1115` · panel `#181b22` · border `#262a33` · text `#e6e6e6` · accent `#5b8def`.
+  - Light palette: bg `#f5f7fa` · panel `#ffffff` · border `#e1e4ea` · text `#1a1d24` · accent `#2563eb`.
 - **Document the SOP it supports.** A new tool with no clear SOP attached usually means we're solving the wrong problem.
 
 ---

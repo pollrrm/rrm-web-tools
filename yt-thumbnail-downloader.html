@@ -2,55 +2,142 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YT Thumbnail Downloader — RRM Video Posting</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
 <style>
+  /* ---- Shared theme tokens ---- */
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1c1f27;
+    --border: #262a33;
+    --border-strong: #2a2f3a;
+    --text: #e6e6e6;
+    --text-muted: #b8bdc8;
+    --text-dim: #8a93a3;
+    --accent: #5b8def;
+    --accent-hover: #4a7ce0;
+    --ok: #6cd17b;
+    --ok-strong: #2d7a3e;
+    --error: #ff7676;
+    --purple: #c8a8ff;
+    --purple-strong: #8b5cf6;
+    --purple-hover: #7c4ce0;
+    --secondary: #2a2f3a;
+    --secondary-hover: #353b48;
+    --secondary-text-disabled: #6a7180;
+    --input-bg: #0f1115;
+    --image-bg: #000;
+    --code-bg: #0f1115;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --border: #e1e4ea;
+    --border-strong: #cbd0d8;
+    --text: #1a1d24;
+    --text-muted: #475569;
+    --text-dim: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --ok-strong: #15803d;
+    --error: #b91c1c;
+    --purple: #6d28d9;
+    --purple-strong: #7c3aed;
+    --purple-hover: #6d28d9;
+    --secondary: #e2e8f0;
+    --secondary-hover: #cbd5e1;
+    --secondary-text-disabled: #94a3b8;
+    --input-bg: #ffffff;
+    --image-bg: #e2e8f0;
+    --code-bg: #f1f5f9;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  /* ---- Theme toggle ---- */
+  .theme-toggle {
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 1000;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  /* ---- Page styles ---- */
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     max-width: 880px;
     margin: 30px auto;
     padding: 0 20px;
-    background: #0f1115;
-    color: #e6e6e6;
+    background: var(--bg);
+    color: var(--text);
+    transition: background .15s, color .15s;
   }
   h1 { font-size: 22px; margin: 0 0 4px; }
-  .subtitle { color: #8a93a3; margin: 0 0 24px; font-size: 13px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
   .back-link {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    color: #8a93a3;
+    color: var(--text-dim);
     text-decoration: none;
     font-size: 12px;
     padding: 4px 10px;
-    border: 1px solid #262a33;
+    border: 1px solid var(--border);
     border-radius: 4px;
     margin-bottom: 14px;
     transition: color .15s, border-color .15s;
   }
-  .back-link:hover { color: #e6e6e6; border-color: #5b8def; }
+  .back-link:hover { color: var(--text); border-color: var(--accent); }
   .card {
-    background: #181b22;
-    border: 1px solid #262a33;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 20px;
     margin-bottom: 18px;
   }
-  label { display: block; font-size: 13px; color: #b8bdc8; margin: 12px 0 6px; }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin: 12px 0 6px; }
   input[type=text], textarea {
     width: 100%;
     padding: 10px 12px;
-    background: #0f1115;
-    border: 1px solid #2a2f3a;
+    background: var(--input-bg);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
-    color: #e6e6e6;
+    color: var(--text);
     font-size: 14px;
     font-family: inherit;
   }
   textarea { min-height: 120px; resize: vertical; }
-  input:focus, textarea:focus { outline: none; border-color: #5b8def; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
   button {
-    background: #5b8def;
+    background: var(--accent);
     color: white;
     border: 0;
     padding: 10px 18px;
@@ -60,9 +147,9 @@
     cursor: pointer;
     margin-top: 14px;
   }
-  button:hover { background: #4a7ce0; }
-  button.secondary { background: #2a2f3a; }
-  button.secondary:hover { background: #353b48; }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: var(--secondary); color: var(--text); }
+  button.secondary:hover { background: var(--secondary-hover); }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .preview-grid {
     display: grid;
@@ -71,8 +158,8 @@
     margin-top: 18px;
   }
   .item {
-    background: #0f1115;
-    border: 1px solid #262a33;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px;
   }
@@ -81,39 +168,40 @@
     aspect-ratio: 16/9;
     object-fit: cover;
     border-radius: 4px;
-    background: #000;
+    background: var(--image-bg);
   }
   .item .title { font-size: 13px; margin: 8px 0 4px; word-break: break-word; font-weight: 600; }
-  .item .meta { font-size: 11px; color: #8a93a3; margin-bottom: 8px; }
-  .item .filename { font-size: 11px; color: #6cd17b; margin-bottom: 10px; word-break: break-all; }
+  .item .meta { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+  .item .filename { font-size: 11px; color: var(--ok); margin-bottom: 10px; word-break: break-all; }
   .item button { margin: 0; padding: 6px 12px; font-size: 12px; }
   .item .download-btn { width: 100%; }
   .item .send-btn {
     width: 100%;
-    background: #8b5cf6;
+    background: var(--purple-strong);
     margin-bottom: 6px;
   }
-  .item .send-btn:hover { background: #7c4ce0; }
+  .item .send-btn:hover { background: var(--purple-hover); }
   .item .send-btn:disabled {
-    background: #2a2f3a;
-    color: #6a7180;
+    background: var(--secondary);
+    color: var(--secondary-text-disabled);
     cursor: not-allowed;
   }
   .ext-banner {
-    background: #181b22;
-    border: 1px solid #5b8def;
+    background: var(--panel);
+    border: 1px solid var(--accent);
     border-radius: 6px;
     padding: 10px 14px;
     margin-bottom: 14px;
     font-size: 12px;
-    color: #b8bdc8;
+    color: var(--text-muted);
     display: none;
   }
   .ext-banner.show { display: block; }
   .ext-banner.installed {
-    border-color: #2d7a3e;
-    color: #6cd17b;
+    border-color: var(--ok-strong);
+    color: var(--ok);
   }
+  .ext-banner a { color: var(--accent); }
   .industry-group { margin-top: 24px; }
   .industry-header {
     display: flex;
@@ -121,18 +209,18 @@
     gap: 10px;
     margin: 0 0 10px;
     padding-bottom: 6px;
-    border-bottom: 1px solid #262a33;
+    border-bottom: 1px solid var(--border);
   }
   .industry-header h2 {
     font-size: 16px;
     margin: 0;
-    color: #c8a8ff;
+    color: var(--purple);
     font-weight: 600;
   }
   .industry-header .count {
     font-size: 11px;
-    color: #8a93a3;
-    background: #1c1f27;
+    color: var(--text-dim);
+    background: var(--panel-2);
     padding: 2px 8px;
     border-radius: 10px;
   }
@@ -140,35 +228,35 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    background: #181b22;
-    border: 1px solid #2a2f3a;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     padding: 4px 4px 4px 8px;
     margin-bottom: 8px;
     font-size: 11px;
   }
-  .copy-row .label { color: #8a93a3; flex-shrink: 0; }
+  .copy-row .label { color: var(--text-dim); flex-shrink: 0; }
   .copy-row .value {
     flex: 1;
-    color: #e6e6e6;
+    color: var(--text);
     font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .copy-row button {
-    background: #2a2f3a;
-    color: #b8bdc8;
+    background: var(--secondary);
+    color: var(--text-muted);
     padding: 3px 8px;
     font-size: 10px;
     width: auto;
     flex-shrink: 0;
   }
-  .copy-row button:hover { background: #353b48; color: white; }
-  .copy-row button.copied { background: #2d7a3e; color: white; }
+  .copy-row button:hover { background: var(--secondary-hover); color: var(--text); }
+  .copy-row button.copied { background: var(--ok-strong); color: white; }
   .content-block {
-    background: #181b22;
-    border: 1px solid #2a2f3a;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     margin-bottom: 8px;
     overflow: hidden;
@@ -178,19 +266,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 4px 4px 4px 8px;
-    border-bottom: 1px solid #2a2f3a;
+    border-bottom: 1px solid var(--border-strong);
     font-size: 11px;
-    color: #8a93a3;
+    color: var(--text-dim);
   }
   .content-block .head button {
-    background: #2a2f3a;
-    color: #b8bdc8;
+    background: var(--secondary);
+    color: var(--text-muted);
     padding: 3px 8px;
     font-size: 10px;
     width: auto;
   }
-  .content-block .head button:hover { background: #353b48; color: white; }
-  .content-block .head button.copied { background: #2d7a3e; color: white; }
+  .content-block .head button:hover { background: var(--secondary-hover); color: var(--text); }
+  .content-block .head button.copied { background: var(--ok-strong); color: white; }
   .content-block pre {
     margin: 0;
     padding: 8px;
@@ -201,19 +289,19 @@
     font-family: inherit;
     font-size: 11px;
     line-height: 1.45;
-    color: #e6e6e6;
+    color: var(--text);
   }
   .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
   .tabs button {
     margin: 0;
-    background: #1c1f27;
-    color: #b8bdc8;
+    background: var(--panel-2);
+    color: var(--text-muted);
     font-weight: 500;
   }
-  .tabs button.active { background: #5b8def; color: white; }
-  .hint { font-size: 12px; color: #8a93a3; margin-top: 6px; }
-  .err { color: #ff7676; font-size: 12px; margin-top: 8px; }
-  code { background: #0f1115; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+  .tabs button.active { background: var(--accent); color: white; }
+  .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+  .err { color: var(--error); font-size: 12px; margin-top: 8px; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -223,7 +311,7 @@
 <p class="subtitle">Paste YouTube URL + video title → downloads <code>{Title}-thumb.jpg</code> at the highest quality available. Built for the RRM Video Posting SOP.</p>
 
 <div id="extBanner" class="ext-banner">
-  <strong>Tip:</strong> Install the <em>RRM WP Helper</em> Chrome extension to enable the <strong>Send to RRM@home</strong> button on each card. See <a href="./extension/" style="color:#5b8def">extension folder</a> in the repo.
+  <strong>Tip:</strong> Install the <em>RRM WP Helper</em> Chrome extension to enable the <strong>Send to RRM@home</strong> button on each card. See <a href="./extension/">extension folder</a> in the repo.
 </div>
 
 <div class="tabs">
@@ -788,6 +876,29 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     }
     document.getElementById('bulk-actions').style.display = '';
   }
+</script>
+
+<!-- Theme toggle (sun/moon) — appended on load -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
 </script>
 
 </body>

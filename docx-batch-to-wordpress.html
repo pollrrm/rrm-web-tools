@@ -5,8 +5,18 @@
 <title>DOCX Batch → WordPress</title>
 <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+  // Apply saved theme before paint to avoid flash.
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
 <style>
-  :root {
+  :root, :root[data-theme="dark"] {
     --bg: #0f1115;
     --panel: #171a21;
     --panel2: #1d2129;
@@ -15,10 +25,58 @@
     --muted: #8a93a4;
     --accent: #4f8cff;
     --accent-dim: #2b4a8c;
+    --accent-soft: #182234;
     --ok: #4ade80;
     --warn: #ffb347;
     --error: #ff5d6c;
+    --thumb-bg: #0b0d12;
+    --issue-bg: #0b0d12;
+    --issue-ctx-bg: #060709;
+    --copied-fg: #0f1115;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
   }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel2: #eef1f6;
+    --border: #d8dde6;
+    --text: #1a1d24;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --accent-dim: #bfd2f7;
+    --accent-soft: #dbeafe;
+    --ok: #15803d;
+    --warn: #b45309;
+    --error: #b91c1c;
+    --thumb-bg: #f1f5f9;
+    --issue-bg: #f8fafc;
+    --issue-ctx-bg: #f1f5f9;
+    --copied-fg: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  /* ---- Theme toggle ---- */
+  .theme-toggle {
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 1000;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -65,7 +123,7 @@
     cursor: pointer;
   }
   .dropzone:hover { border-color: var(--accent-dim); }
-  .dropzone.drag { border-color: var(--accent); background: #182234; }
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
   .dropzone .big { font-size: 16px; margin-bottom: 6px; }
   .dropzone .small { color: var(--muted); font-size: 13px; }
   .dropzone input[type=file] { display: none; }
@@ -91,8 +149,8 @@
     display: none;
   }
   .status.show { display: block; }
-  .status.ok { color: var(--ok); border-color: #1f4f37; }
-  .status.err { color: var(--error); border-color: #4f1f27; }
+  .status.ok { color: var(--ok); border-color: var(--ok); }
+  .status.err { color: var(--error); border-color: var(--error); }
 
   /* Per-batch site / topic selector */
   .batch-meta {
@@ -178,7 +236,7 @@
   }
   .ghost-btn:hover,
   .copy-btn:hover { background: var(--accent-dim); border-color: var(--accent); }
-  .copy-btn.copied { background: var(--ok); color: #0f1115; border-color: var(--ok); }
+  .copy-btn.copied { background: var(--ok); color: var(--copied-fg); border-color: var(--ok); }
   .ghost-btn:disabled { opacity: .5; cursor: not-allowed; }
 
   .card {
@@ -207,7 +265,7 @@
     width: 80px;
     height: 60px;
     border-radius: 6px;
-    background: #0b0d12;
+    background: var(--thumb-bg);
     background-size: cover;
     background-position: center;
     border: 1px solid var(--border);
@@ -276,6 +334,12 @@
   .field.f-meta  { --field-accent: #38bdf8; }
   .field.f-html  { --field-accent: #4ade80; }
   .field.f-check { --field-accent: #facc15; }
+  :root[data-theme="light"] .field.f-date  { --field-accent: #1d4ed8; }
+  :root[data-theme="light"] .field.f-title { --field-accent: #6d28d9; }
+  :root[data-theme="light"] .field.f-seo   { --field-accent: #b45309; }
+  :root[data-theme="light"] .field.f-meta  { --field-accent: #0284c7; }
+  :root[data-theme="light"] .field.f-html  { --field-accent: #15803d; }
+  :root[data-theme="light"] .field.f-check { --field-accent: #a16207; }
 
   .field-head {
     display: flex;
@@ -337,7 +401,7 @@
   /* Issues mini-panel */
   .issues-body { padding: 10px 12px; }
   .issue {
-    background: #0b0d12;
+    background: var(--issue-bg);
     border: 1px solid var(--border);
     border-left: 3px solid var(--warn);
     padding: 8px 10px;
@@ -351,7 +415,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11px;
     color: var(--muted);
-    background: #060709;
+    background: var(--issue-ctx-bg);
     padding: 5px 7px;
     border-radius: 3px;
     margin-top: 5px;
@@ -1437,6 +1501,29 @@ $("checkAllBtn").addEventListener("click", async () => {
   btn.disabled = false;
   btn.textContent = "Run Quality Check on All";
 });
+</script>
+
+<!-- Theme toggle (sun/moon) — appended on load -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
 </script>
 </body>
 </html>
