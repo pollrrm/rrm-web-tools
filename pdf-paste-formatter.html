@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Paste Formatter — RRM Web Support Tools</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  /* ---- Shared theme tokens ---- */
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1c1f27;
+    --border: #262a33;
+    --border-strong: #2a2f3a;
+    --text: #e6e6e6;
+    --text-muted: #b8bdc8;
+    --text-dim: #8a93a3;
+    --accent: #5b8def;
+    --accent-hover: #4a7ce0;
+    --ok: #6cd17b;
+    --ok-strong: #2d7a3e;
+    --error: #ff7a8a;
+    --purple: #c8a8ff;
+    --secondary: #2a2f3a;
+    --secondary-hover: #353b48;
+    --input-bg: #0f1115;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --border: #e1e4ea;
+    --border-strong: #cbd0d8;
+    --text: #1a1d24;
+    --text-muted: #475569;
+    --text-dim: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --ok-strong: #15803d;
+    --error: #b91c1c;
+    --purple: #6d28d9;
+    --secondary: #e2e8f0;
+    --secondary-hover: #cbd5e1;
+    --input-bg: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  /* ---- Theme toggle ---- */
+  .theme-toggle {
+    position: fixed;
+    top: 14px; right: 14px;
+    z-index: 1000;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  /* ---- Page styles ---- */
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 1080px;
+    margin: 30px auto;
+    padding: 0 20px 60px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 14px;
+    transition: color .15s, border-color .15s;
+  }
+  .back-link:hover { color: var(--text); border-color: var(--accent); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin: 12px 0 6px; }
+  textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    line-height: 1.55;
+    resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .12s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: var(--secondary); color: var(--text); }
+  button.secondary:hover { background: var(--secondary-hover); }
+  button.copied { background: var(--ok-strong); color: white; }
+  .panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 780px) {
+    .panes { grid-template-columns: 1fr; }
+  }
+  .opts {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  .opts label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .opts input[type=checkbox] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    margin: 0;
+  }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .stats {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+  .stats strong { color: var(--text-muted); font-weight: 600; }
+  .pane-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .pane-head .pane-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 700;
+    color: var(--text-dim);
+  }
+  .pane-head button {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<a href="./index.html" class="back-link">← All Tools</a>
+<h1>PDF Paste Formatter</h1>
+<p class="subtitle">Strips the hard line breaks PDFs leave behind on copy-paste. Joins wrapped lines, keeps real paragraph breaks, and mends words that were hyphenated at line ends.</p>
+
+<div class="card">
+  <h2>Cleanup Options</h2>
+  <div class="opts">
+    <label><input type="checkbox" id="optKeepLists" checked> Keep list items on their own line</label>
+    <label><input type="checkbox" id="optMendHyphens" checked> Mend hyphenated words</label>
+    <label><input type="checkbox" id="optCollapseSpaces" checked> Collapse runs of spaces</label>
+    <label><input type="checkbox" id="optSmartQuotes"> Normalize curly quotes to straight</label>
+    <label><input type="checkbox" id="optAggressive"> Aggressive: ignore blank lines too</label>
+  </div>
+
+  <div class="panes">
+    <div>
+      <div class="pane-head">
+        <span class="pane-title">Pasted from PDF</span>
+        <button class="secondary" id="clearBtn">Clear</button>
+      </div>
+      <textarea id="input" placeholder="Paste text copied from a PDF here. It'll be cleaned automatically as you type."></textarea>
+    </div>
+    <div>
+      <div class="pane-head">
+        <span class="pane-title">Cleaned Output</span>
+        <button id="copyBtn">Copy</button>
+      </div>
+      <textarea id="output" readonly placeholder="Cleaned text appears here."></textarea>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button id="cleanBtn">Re-clean</button>
+    <button class="secondary" id="swapBtn">Move output → input</button>
+    <span class="stats" id="stats">No input yet.</span>
+  </div>
+</div>
+
+<!-- Theme toggle (sun/moon) — appended on load -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
+</script>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const input = $('input');
+  const output = $('output');
+  const stats = $('stats');
+
+  // A line starts a list item if it begins with a bullet glyph or a numbered prefix.
+  const LIST_RE = /^\s*([-*•·▪◦○●]|\(?\d{1,3}[.)]|[a-zA-Z][.)])\s+/;
+  // Treat lines that look like headings (short, ALL CAPS or Title Case w/ no terminal punct) as their own paragraph.
+  const HEADING_RE = /^\s*[A-Z0-9][^.!?:]{0,80}$/;
+
+  function clean(text) {
+    const opts = {
+      keepLists: $('optKeepLists').checked,
+      mendHyphens: $('optMendHyphens').checked,
+      collapseSpaces: $('optCollapseSpaces').checked,
+      smartQuotes: $('optSmartQuotes').checked,
+      aggressive: $('optAggressive').checked,
+    };
+
+    let hyphenFixes = 0;
+    let linesJoined = 0;
+
+    if (!text) return { out: '', hyphenFixes, linesJoined };
+
+    // Normalize newlines and strip trailing spaces on each line.
+    let t = text.replace(/\r\n?/g, '\n');
+    t = t.split('\n').map(l => l.replace(/[ \t]+$/g, '')).join('\n');
+
+    if (opts.smartQuotes) {
+      t = t
+        .replace(/[‘’‚‛]/g, "'")
+        .replace(/[“”„‟]/g, '"')
+        .replace(/–|—/g, '-')
+        .replace(/…/g, '...')
+        .replace(/ /g, ' ');
+    }
+
+    // Split into paragraphs by blank lines. In aggressive mode, treat the whole input
+    // as one big paragraph (everything will be joined).
+    const paragraphs = opts.aggressive
+      ? [t.replace(/\n+/g, '\n')]
+      : t.split(/\n{2,}/);
+
+    const cleanedParas = paragraphs.map(para => {
+      const rawLines = para.split('\n').filter(l => l.length > 0);
+      if (!rawLines.length) return '';
+
+      // Group lines into "logical lines": every list item / heading starts a new logical line.
+      // Within a logical line, consecutive raw lines get joined.
+      const groups = [];
+      let current = [];
+
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        const startsList = opts.keepLists && LIST_RE.test(line);
+        if (startsList && current.length) {
+          groups.push(current);
+          current = [];
+        }
+        current.push(line);
+      }
+      if (current.length) groups.push(current);
+
+      return groups.map(group => {
+        // Join the lines in this group end-to-end, with optional hyphen mending.
+        let joined = group[0];
+        for (let i = 1; i < group.length; i++) {
+          const prev = joined;
+          const next = group[i];
+          const endsWithHyphen = /[A-Za-z]-$/.test(prev);
+          const nextStartsLower = /^[a-z]/.test(next);
+          if (opts.mendHyphens && endsWithHyphen && nextStartsLower) {
+            joined = prev.replace(/-$/, '') + next;
+            hyphenFixes++;
+          } else {
+            joined = prev.replace(/\s+$/, '') + ' ' + next.replace(/^\s+/, '');
+          }
+          linesJoined++;
+        }
+        return joined;
+      }).join('\n');
+    });
+
+    let out = cleanedParas.join('\n\n');
+
+    if (opts.collapseSpaces) {
+      // Collapse runs of spaces/tabs (but not newlines).
+      out = out.replace(/[ \t]{2,}/g, ' ');
+      // Strip spaces around newlines.
+      out = out.replace(/ *\n */g, '\n');
+    }
+
+    // Trim trailing whitespace on the doc.
+    out = out.replace(/\s+$/, '');
+
+    return { out, hyphenFixes, linesJoined };
+  }
+
+  function update() {
+    const src = input.value;
+    if (!src) {
+      output.value = '';
+      stats.textContent = 'No input yet.';
+      return;
+    }
+    const { out, hyphenFixes, linesJoined } = clean(src);
+    output.value = out;
+    const inWords = src.trim().split(/\s+/).length;
+    const outWords = out.trim() ? out.trim().split(/\s+/).length : 0;
+    stats.innerHTML =
+      `Joined <strong>${linesJoined}</strong> line${linesJoined === 1 ? '' : 's'}` +
+      ` · Mended <strong>${hyphenFixes}</strong> hyphen${hyphenFixes === 1 ? '' : 's'}` +
+      ` · Input <strong>${inWords}</strong> words → Output <strong>${outWords}</strong> words`;
+  }
+
+  // Live update on input and on option change.
+  input.addEventListener('input', update);
+  document.querySelectorAll('.opts input').forEach(el => el.addEventListener('change', update));
+
+  $('cleanBtn').addEventListener('click', update);
+
+  $('clearBtn').addEventListener('click', () => {
+    input.value = '';
+    update();
+    input.focus();
+  });
+
+  $('swapBtn').addEventListener('click', () => {
+    input.value = output.value;
+    update();
+  });
+
+  $('copyBtn').addEventListener('click', async () => {
+    const btn = $('copyBtn');
+    if (!output.value) return;
+    try {
+      await navigator.clipboard.writeText(output.value);
+    } catch {
+      output.select();
+      document.execCommand('copy');
+    }
+    const orig = btn.textContent;
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
+  });
+
+  // Initial render in case the textarea is pre-populated (e.g. browser autofill).
+  update();
+})();
+</script>
+
+</body>
+</html>
