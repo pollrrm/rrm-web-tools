@@ -630,10 +630,29 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     });
     if (!anchors.length) return [{ text, industry: 'Ungrouped', destinationUrl: null }];
 
+    // Labels that legitimately end content collection. If the line right above
+    // the next anchor matches one of these, it's actual content/metadata and
+    // we leave the section boundary alone. Otherwise it's the next section's
+    // industry header (either "Industry: X" or plain "X" on its own line) and
+    // we trim it off so it doesn't bleed into this section's content.
+    const contentLabelRe = /^(content link|date of posting|video title|video link|content)\s*:/i;
+
     const sections = [];
     for (let a = 0; a < anchors.length; a++) {
       const start = anchors[a];
-      const end = a + 1 < anchors.length ? anchors[a + 1] : lines.length;
+      let end = a + 1 < anchors.length ? anchors[a + 1] : lines.length;
+
+      if (a + 1 < anchors.length) {
+        // Walk backward from the next anchor, skipping blank lines.
+        let i = anchors[a + 1] - 1;
+        while (i > start && !lines[i].trim()) i--;
+        // If we landed on a non-content-label line, it's the next section's
+        // industry header — exclude it (and the blanks above it) from this section.
+        if (i > start && !contentLabelRe.test(lines[i].trim())) {
+          end = i;
+        }
+      }
+
       const sectionText = lines.slice(start, end).join('\n');
       const destLine = lines[anchors[a]];
       const destMatch = destLine.match(/destination\s*link\s*:\s*(\S+)/i);
