@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Newsletter → WPBakery — RRM Web Support Tools</title>
+<title>RRM Newsletter → WPBakery — RRM Web Support Tools</title>
 <script>
   (function() {
     try {
@@ -238,8 +238,8 @@
 <body>
 
 <a href="./index.html" class="back-link">← All Tools</a>
-<h1>Newsletter → WPBakery</h1>
-<p class="subtitle">Convert an Unlayer email HTML, PDF, or pasted text into WPBakery shortcodes ready to paste into the WordPress Code editor. Layout (row width, background colors, white text) is auto-detected from the source.</p>
+<h1>RRM Newsletter → WPBakery</h1>
+<p class="subtitle">For posting the monthly Elevate newsletter to ringringmarketing.com. Convert an Unlayer email HTML, PDF, or pasted text into WPBakery shortcodes ready to paste into the WordPress Code editor. Layout (row width, background colors, white text) is auto-detected from the source.</p>
 
 <div class="card">
   <h2>1. Source</h2>
@@ -308,6 +308,14 @@
       Append Forminator form at end
     </label>
     <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-size:13px; color:var(--text-muted);">
+      Niche:
+      <select id="formNiche" style="width: auto; padding: 4px 8px;">
+        <option value="11846">Funeral / Deathcare (11846)</option>
+        <option value="13005">Cemetery (13005)</option>
+        <option value="manual">Manual ID…</option>
+      </select>
+    </label>
+    <label id="formIdLabel" style="display:none; align-items:center; gap:8px; margin:0; font-size:13px; color:var(--text-muted);">
       Form ID:
       <input type="text" id="formId" value="11846" style="width: 90px; padding: 4px 8px;">
     </label>
@@ -990,13 +998,24 @@
       out += `[/vc_row]`;
     });
     if ($('appendForm').checked) {
-      const id = ($('formId').value || '').trim() || '11846';
+      const niche = $('formNiche').value;
+      const id = (niche === 'manual'
+        ? ($('formId').value || '').trim()
+        : niche) || '11846';
       const shortcode = `[forminator_form id="${id}"]`;
       const b64 = btoa(shortcode);
       out += `[vc_row][vc_column][vc_raw_html css=""]${b64}[/vc_raw_html][/vc_column][/vc_row]`;
     }
     return out;
   }
+
+  // Niche dropdown: show/hide manual Form ID field, keep it in sync with the preset
+  $('formNiche').addEventListener('change', () => {
+    const v = $('formNiche').value;
+    const manual = v === 'manual';
+    $('formIdLabel').style.display = manual ? 'inline-flex' : 'none';
+    if (!manual) $('formId').value = v;
+  });
 
   // ----- Wire input handlers -----
   function handleHtmlSource(text, source) {
