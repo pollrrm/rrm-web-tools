@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content Compare — RRM Web Support Tools</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1c1f27;
+    --border: #262a33;
+    --border-strong: #2a2f3a;
+    --text: #e6e6e6;
+    --text-muted: #b8bdc8;
+    --text-dim: #8a93a3;
+    --accent: #5b8def;
+    --accent-hover: #4a7ce0;
+    --ok: #6cd17b;
+    --ok-strong: #2d7a3e;
+    --error: #ff7a8a;
+    --purple: #c8a8ff;
+    --secondary: #2a2f3a;
+    --secondary-hover: #353b48;
+    --input-bg: #0f1115;
+    --add-bg: rgba(108, 209, 123, .22);
+    --add-border: rgba(108, 209, 123, .55);
+    --rem-bg: rgba(255, 122, 138, .22);
+    --rem-border: rgba(255, 122, 138, .55);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --border: #e1e4ea;
+    --border-strong: #cbd0d8;
+    --text: #1a1d24;
+    --text-muted: #475569;
+    --text-dim: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --ok-strong: #15803d;
+    --error: #b91c1c;
+    --purple: #6d28d9;
+    --secondary: #e2e8f0;
+    --secondary-hover: #cbd5e1;
+    --input-bg: #ffffff;
+    --add-bg: #dcfce7;
+    --add-border: #86efac;
+    --rem-bg: #fee2e2;
+    --rem-border: #fca5a5;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 1280px;
+    margin: 30px auto;
+    padding: 0 20px 60px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  .panes {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (min-width: 880px) {
+    .panes { grid-template-columns: 1fr 1fr; }
+  }
+  .pane {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pane h2 {
+    font-size: 14px;
+    margin: 0;
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .pane .hint { font-size: 12px; color: var(--text-dim); margin: 0; }
+
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > * { min-width: 0; }
+  .grow { flex: 1; }
+
+  input[type="text"], input[type="url"], textarea, select {
+    background: var(--input-bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    transition: border-color .15s;
+  }
+  input[type="text"]:focus, input[type="url"]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  textarea {
+    min-height: 220px;
+    resize: vertical;
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+  label.field {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  label.field .lab { font-weight: 500; }
+
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.secondary {
+    background: var(--secondary);
+    color: var(--text);
+  }
+  button.secondary:hover { background: var(--secondary-hover); }
+
+  .file-drop {
+    border: 1.5px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .file-drop:hover, .file-drop.drag {
+    border-color: var(--accent);
+    background: var(--panel-2);
+    color: var(--text);
+  }
+  .file-drop input { display: none; }
+  .file-name {
+    font-size: 12px; color: var(--text-muted);
+    margin-top: 4px; word-break: break-all;
+  }
+
+  .status {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    background: var(--panel-2);
+    color: var(--text-muted);
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.err { color: var(--error); border: 1px solid var(--rem-border); background: var(--rem-bg); }
+  .status.ok { color: var(--ok); border: 1px solid var(--add-border); background: var(--add-bg); }
+
+  .options {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    align-items: center;
+  }
+  .options .opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+  }
+  .options .opt input { accent-color: var(--accent); }
+  .options .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .results {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: none;
+  }
+  .results.show { display: block; }
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 14px 22px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat { color: var(--text-muted); }
+  .stat strong { color: var(--text); font-weight: 600; }
+  .stat.ok strong { color: var(--ok); }
+  .stat.err strong { color: var(--error); }
+
+  .diff-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 880px) {
+    .diff-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .diff-col {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    max-height: 600px;
+    overflow: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .diff-col h3 {
+    font-size: 12px;
+    margin: 0 0 8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    position: sticky;
+    top: -12px;
+    background: var(--input-bg);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-col .rem {
+    background: var(--rem-bg);
+    border-bottom: 1px solid var(--rem-border);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .diff-col .add {
+    background: var(--add-bg);
+    border-bottom: 1px solid var(--add-border);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  .missing-list {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    display: none;
+  }
+  .missing-list.show { display: block; }
+  .missing-list h3 {
+    font-size: 12px;
+    margin: 0 0 8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .missing-list ul { margin: 0; padding-left: 20px; font-size: 13px; }
+  .missing-list li { margin-bottom: 4px; color: var(--text-muted); }
+  .missing-list li mark { background: var(--rem-bg); color: var(--text); padding: 0 2px; border-radius: 2px; }
+
+  details.advanced {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+  }
+  details.advanced summary {
+    cursor: pointer; font-size: 12px; color: var(--text-muted);
+    user-select: none;
+  }
+  details.advanced[open] summary { margin-bottom: 8px; }
+
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--text-dim);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: -2px;
+    margin-right: 4px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<a href="./index.html" class="back-link">← All Tools</a>
+<h1>Content Compare</h1>
+<p class="subtitle">Verify that content from a PDF, DOCX, or HTML source is correctly pasted/rendered on a live web page. Word-level diff highlights what's missing or extra.</p>
+
+<div class="panes">
+
+  <div class="pane">
+    <h2>Source</h2>
+    <p class="hint">The original — what the page <em>should</em> say.</p>
+
+    <label class="file-drop" id="src-drop">
+      <input type="file" id="src-file" accept=".pdf,.docx,.html,.htm,.txt">
+      <div><strong>Drop file</strong> or click to select</div>
+      <div class="file-name" id="src-name">PDF, DOCX, HTML, or TXT</div>
+    </label>
+
+    <div class="status" id="src-status"></div>
+
+    <details class="advanced">
+      <summary>Advanced (extracted text — edit if needed)</summary>
+      <textarea id="src-text" placeholder="Extracted source text will appear here. You can edit before comparing."></textarea>
+    </details>
+  </div>
+
+  <div class="pane">
+    <h2>Page (Live URL)</h2>
+    <p class="hint">The rendered page — what the visitor sees.</p>
+
+    <div class="row">
+      <input type="url" id="page-url" class="grow" placeholder="https://example.com/about/" autocomplete="off">
+      <button id="page-fetch">Fetch</button>
+    </div>
+
+    <label class="field">
+      <span class="lab">Optional: CSS selector to scope extraction (e.g. <code>main</code>, <code>.entry-content</code>, <code>article</code>)</span>
+      <input type="text" id="page-selector" placeholder="Leave blank to use whole page (auto-trims nav/header/footer/scripts)">
+    </label>
+
+    <div class="status" id="page-status"></div>
+
+    <details class="advanced">
+      <summary>Advanced (extracted text — edit if needed)</summary>
+      <textarea id="page-text" placeholder="Fetched page text will appear here. You can edit before comparing."></textarea>
+    </details>
+  </div>
+
+</div>
+
+<div class="options">
+  <label class="opt"><input type="checkbox" id="opt-case" checked> Ignore case</label>
+  <label class="opt"><input type="checkbox" id="opt-punct" checked> Ignore punctuation</label>
+  <label class="opt"><input type="checkbox" id="opt-ws" checked> Normalize whitespace</label>
+  <label class="opt"><input type="checkbox" id="opt-smart" checked> Normalize smart quotes &amp; dashes</label>
+  <label class="opt"><input type="checkbox" id="opt-missing" checked> Show missing-phrases list</label>
+  <div class="actions">
+    <button class="secondary" id="btn-clear">Clear</button>
+    <button id="btn-compare">Compare</button>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="stats" id="stats"></div>
+  <div class="diff-grid">
+    <div class="diff-col" id="diff-source">
+      <h3>Source</h3>
+      <div id="diff-source-body"></div>
+    </div>
+    <div class="diff-col" id="diff-page">
+      <h3>Page</h3>
+      <div id="diff-page-body"></div>
+    </div>
+  </div>
+  <div class="missing-list" id="missing">
+    <h3>Phrases in source not found on page</h3>
+    <ul id="missing-items"></ul>
+  </div>
+</div>
+
+<!-- Theme toggle -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
+</script>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // ----- Element refs -----
+  const $ = (id) => document.getElementById(id);
+  const srcDrop = $('src-drop'), srcFile = $('src-file'), srcName = $('src-name'),
+        srcStatus = $('src-status'), srcText = $('src-text');
+  const pageUrl = $('page-url'), pageFetch = $('page-fetch'),
+        pageSelector = $('page-selector'),
+        pageStatus = $('page-status'), pageText = $('page-text');
+  const results = $('results'), statsEl = $('stats'),
+        diffSrcBody = $('diff-source-body'), diffPageBody = $('diff-page-body'),
+        missingEl = $('missing'), missingItems = $('missing-items');
+
+  function setStatus(el, msg, kind) {
+    el.className = 'status show' + (kind ? ' ' + kind : '');
+    el.innerHTML = msg;
+  }
+  function clearStatus(el) { el.className = 'status'; el.textContent = ''; }
+
+  // ----- Source: file handling -----
+  ;['dragover','dragenter'].forEach(ev =>
+    srcDrop.addEventListener(ev, e => { e.preventDefault(); srcDrop.classList.add('drag'); }));
+  ;['dragleave','drop'].forEach(ev =>
+    srcDrop.addEventListener(ev, e => { e.preventDefault(); srcDrop.classList.remove('drag'); }));
+  srcDrop.addEventListener('drop', e => {
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleSourceFile(e.dataTransfer.files[0]);
+  });
+  srcFile.addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) handleSourceFile(e.target.files[0]);
+  });
+
+  async function handleSourceFile(file) {
+    srcName.textContent = file.name;
+    setStatus(srcStatus, '<span class="spinner"></span>Extracting text…');
+    try {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      let text = '';
+      if (ext === 'pdf') text = await extractPDF(file);
+      else if (ext === 'docx') text = await extractDOCX(file);
+      else if (ext === 'html' || ext === 'htm') text = await extractHTMLFile(file);
+      else if (ext === 'txt') text = await file.text();
+      else throw new Error('Unsupported file type: .' + ext);
+      srcText.value = text.trim();
+      setStatus(srcStatus, 'Extracted ' + countWords(text) + ' words from ' + ext.toUpperCase() + '.', 'ok');
+    } catch (err) {
+      setStatus(srcStatus, 'Failed: ' + (err.message || err), 'err');
+    }
+  }
+
+  async function extractPDF(file) {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let out = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      // Join items, inserting newline when y-position drops (new line)
+      let lastY = null;
+      let line = '';
+      const lines = [];
+      for (const item of content.items) {
+        const y = item.transform[5];
+        if (lastY !== null && Math.abs(y - lastY) > 2) {
+          if (line.trim()) lines.push(line.trim());
+          line = '';
+        }
+        line += item.str + (item.hasEOL ? '\n' : ' ');
+        lastY = y;
+      }
+      if (line.trim()) lines.push(line.trim());
+      out += lines.join('\n') + '\n\n';
+    }
+    return out;
+  }
+
+  async function extractDOCX(file) {
+    const buf = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buf });
+    return result.value || '';
+  }
+
+  async function extractHTMLFile(file) {
+    const html = await file.text();
+    return extractTextFromHTML(html, '');
+  }
+
+  // ----- Page: URL fetching -----
+  pageFetch.addEventListener('click', fetchPage);
+  pageUrl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchPage(); } });
+
+  const PROXIES = [
+    { name: 'direct', build: (u) => u },
+    { name: 'corsproxy.io', build: (u) => 'https://corsproxy.io/?' + encodeURIComponent(u) },
+    { name: 'allorigins', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) }
+  ];
+
+  async function fetchPage() {
+    const url = pageUrl.value.trim();
+    if (!url) { setStatus(pageStatus, 'Enter a URL first.', 'err'); return; }
+    let normalized = url;
+    if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
+
+    setStatus(pageStatus, '<span class="spinner"></span>Fetching…');
+    pageFetch.disabled = true;
+
+    let lastErr = null;
+    for (const proxy of PROXIES) {
+      try {
+        const target = proxy.build(normalized);
+        const res = await fetch(target, { redirect: 'follow' });
+        if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
+        const html = await res.text();
+        const text = extractTextFromHTML(html, pageSelector.value.trim());
+        pageText.value = text.trim();
+        setStatus(pageStatus,
+          'Fetched ' + countWords(text) + ' words via <strong>' + proxy.name + '</strong>.',
+          'ok');
+        pageFetch.disabled = false;
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    pageFetch.disabled = false;
+    setStatus(pageStatus,
+      'Could not fetch (' + (lastErr ? lastErr.message : 'unknown error') +
+      '). The site may block all CORS proxies. Try saving the page as HTML and using a Source file instead, or paste rendered text into the Advanced box.',
+      'err');
+  }
+
+  // ----- HTML → text -----
+  function extractTextFromHTML(html, selector) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Strip noise
+    doc.querySelectorAll('script, style, noscript, template, svg, iframe').forEach(n => n.remove());
+
+    let root = null;
+    if (selector) {
+      try { root = doc.querySelector(selector); } catch (e) {}
+    }
+    if (!root) {
+      // Auto-pick main content if no selector given
+      root = doc.querySelector('main, article, [role="main"], .entry-content, .post-content, #content')
+          || doc.body || doc.documentElement;
+    }
+    if (!root) return '';
+
+    // Drop common boilerplate
+    root.querySelectorAll('nav, header, footer, aside, .menu, .navigation, .site-header, .site-footer, .widget, .sidebar, .comments, #comments, form, button').forEach(n => {
+      // only remove if not the root itself
+      if (n !== root) n.remove();
+    });
+
+    // Insert line breaks before block elements so .textContent has paragraphing
+    const blocks = root.querySelectorAll('p, li, br, h1, h2, h3, h4, h5, h6, tr, div, blockquote');
+    blocks.forEach(b => b.insertAdjacentText('beforebegin', '\n'));
+
+    let text = root.textContent || '';
+    // Collapse runs of blank lines
+    text = text.replace(/[ \t]+/g, ' ').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n');
+    return text.trim();
+  }
+
+  // ----- Normalization -----
+  function normalize(text) {
+    let t = text;
+    if ($('opt-smart').checked) {
+      t = t.replace(/[‘’‚‛′]/g, "'")
+           .replace(/[“”„‟″]/g, '"')
+           .replace(/[–—−]/g, '-')
+           .replace(/…/g, '...')
+           .replace(/ /g, ' ');
+    }
+    if ($('opt-ws').checked) {
+      t = t.replace(/\s+/g, ' ').trim();
+    }
+    if ($('opt-case').checked) t = t.toLowerCase();
+    if ($('opt-punct').checked) t = t.replace(/[.,;:!?()\[\]{}"'`*_~|\\\/]/g, ' ').replace(/\s+/g, ' ').trim();
+    return t;
+  }
+
+  function countWords(text) {
+    const t = (text || '').trim();
+    if (!t) return 0;
+    return t.split(/\s+/).length;
+  }
+
+  // ----- Word-level diff (LCS) -----
+  // Tokenize keeping original surface form, but compare normalized version.
+  function tokenize(text) {
+    // Split by whitespace, but keep words; we'll also include punctuation as own tokens
+    // so display is faithful. Empty strings filtered.
+    const tokens = [];
+    const re = /\s+|[^\s\w]+|[\w'-]+/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      tokens.push(m[0]);
+    }
+    return tokens;
+  }
+
+  function normToken(tok) {
+    // For matching: apply same normalization rules but per-token
+    let t = tok;
+    if ($('opt-smart').checked) {
+      t = t.replace(/[‘’‚‛′]/g, "'")
+           .replace(/[“”„‟″]/g, '"')
+           .replace(/[–—−]/g, '-')
+           .replace(/…/g, '...')
+           .replace(/ /g, ' ');
+    }
+    if ($('opt-case').checked) t = t.toLowerCase();
+    if ($('opt-punct').checked) t = t.replace(/[.,;:!?()\[\]{}"'`*_~|\\\/]/g, '');
+    if ($('opt-ws').checked) t = t.trim();
+    return t;
+  }
+
+  function isIgnorable(tok) {
+    const n = normToken(tok);
+    return n === '';
+  }
+
+  function lcsDiff(aTokens, bTokens) {
+    // Filter ignorable tokens for matching but track original indices
+    const aIdx = [], bIdx = [], aNorm = [], bNorm = [];
+    for (let i = 0; i < aTokens.length; i++) {
+      const n = normToken(aTokens[i]);
+      if (n !== '') { aIdx.push(i); aNorm.push(n); }
+    }
+    for (let j = 0; j < bTokens.length; j++) {
+      const n = normToken(bTokens[j]);
+      if (n !== '') { bIdx.push(j); bNorm.push(n); }
+    }
+    const n = aNorm.length, m = bNorm.length;
+    // DP table of LCS lengths
+    // To save memory for large docs, we use Uint32Array
+    const dp = new Uint32Array((n + 1) * (m + 1));
+    const W = m + 1;
+    for (let i = 1; i <= n; i++) {
+      for (let j = 1; j <= m; j++) {
+        if (aNorm[i-1] === bNorm[j-1]) dp[i*W + j] = dp[(i-1)*W + (j-1)] + 1;
+        else dp[i*W + j] = Math.max(dp[(i-1)*W + j], dp[i*W + (j-1)]);
+      }
+    }
+    // Build op list over normalized indices
+    const ops = []; // 'eq' | 'rem' | 'add'
+    let i = n, j = m;
+    while (i > 0 && j > 0) {
+      if (aNorm[i-1] === bNorm[j-1]) { ops.push({op:'eq', a:aIdx[i-1], b:bIdx[j-1]}); i--; j--; }
+      else if (dp[(i-1)*W + j] >= dp[i*W + (j-1)]) { ops.push({op:'rem', a:aIdx[i-1]}); i--; }
+      else { ops.push({op:'add', b:bIdx[j-1]}); j--; }
+    }
+    while (i > 0) { ops.push({op:'rem', a:aIdx[i-1]}); i--; }
+    while (j > 0) { ops.push({op:'add', b:bIdx[j-1]}); j--; }
+    ops.reverse();
+    return { ops, lcsLen: dp[n*W + m], aLen: n, bLen: m };
+  }
+
+  // ----- Compare action -----
+  $('btn-compare').addEventListener('click', runCompare);
+  $('btn-clear').addEventListener('click', () => {
+    srcText.value = ''; pageText.value = '';
+    srcName.textContent = 'PDF, DOCX, HTML, or TXT';
+    srcFile.value = '';
+    clearStatus(srcStatus); clearStatus(pageStatus);
+    results.classList.remove('show');
+  });
+
+  function escapeHTML(s) {
+    return s.replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function runCompare() {
+    const a = srcText.value;
+    const b = pageText.value;
+    if (!a.trim()) { setStatus(srcStatus, 'No source text. Upload a file first.', 'err'); return; }
+    if (!b.trim()) { setStatus(pageStatus, 'No page text. Fetch a URL first.', 'err'); return; }
+
+    const aTok = tokenize(a);
+    const bTok = tokenize(b);
+    const { ops, lcsLen, aLen, bLen } = lcsDiff(aTok, bTok);
+
+    // Build side-by-side HTML.
+    // Source view: equal + removed (with .rem)
+    // Page view: equal + added (with .add)
+    // We render in original order on each side.
+    // For each source token: check if it's in any 'rem' op or part of 'eq'.
+    // It's easier to iterate ops once and emit into two buffers.
+
+    // First, map: which source tokens are removed, which page tokens are added
+    const srcRem = new Set();
+    const pageAdd = new Set();
+    for (const op of ops) {
+      if (op.op === 'rem') srcRem.add(op.a);
+      else if (op.op === 'add') pageAdd.add(op.b);
+    }
+
+    let srcHtml = '';
+    for (let i = 0; i < aTok.length; i++) {
+      const t = escapeHTML(aTok[i]);
+      if (isIgnorable(aTok[i])) { srcHtml += t; continue; }
+      if (srcRem.has(i)) srcHtml += '<span class="rem">' + t + '</span>';
+      else srcHtml += t;
+    }
+    let pageHtml = '';
+    for (let j = 0; j < bTok.length; j++) {
+      const t = escapeHTML(bTok[j]);
+      if (isIgnorable(bTok[j])) { pageHtml += t; continue; }
+      if (pageAdd.has(j)) pageHtml += '<span class="add">' + t + '</span>';
+      else pageHtml += t;
+    }
+    diffSrcBody.innerHTML = srcHtml || '<em style="color:var(--text-dim)">(empty)</em>';
+    diffPageBody.innerHTML = pageHtml || '<em style="color:var(--text-dim)">(empty)</em>';
+
+    // Stats
+    const missing = aLen - lcsLen;
+    const extra = bLen - lcsLen;
+    const sim = aLen + bLen === 0 ? 100 : Math.round((2 * lcsLen / (aLen + bLen)) * 100);
+    const simClass = sim >= 98 ? 'ok' : (sim >= 85 ? '' : 'err');
+    statsEl.innerHTML =
+      '<div class="stat ' + simClass + '">Similarity: <strong>' + sim + '%</strong></div>' +
+      '<div class="stat">Source words: <strong>' + aLen + '</strong></div>' +
+      '<div class="stat">Page words: <strong>' + bLen + '</strong></div>' +
+      '<div class="stat ' + (missing ? 'err' : 'ok') + '">Missing on page: <strong>' + missing + '</strong></div>' +
+      '<div class="stat ' + (extra ? '' : 'ok') + '">Extra on page: <strong>' + extra + '</strong></div>';
+
+    // Missing-phrase list: consecutive runs of removed tokens, length ≥ 2 words
+    if ($('opt-missing').checked) {
+      const phrases = [];
+      let run = [];
+      for (const op of ops) {
+        if (op.op === 'rem') run.push(op.a);
+        else {
+          if (run.length) { flushRun(run, phrases, aTok); run = []; }
+        }
+      }
+      if (run.length) flushRun(run, phrases, aTok);
+
+      const meaningful = phrases.filter(p => p.split(/\s+/).filter(Boolean).length >= 2);
+      if (meaningful.length) {
+        missingItems.innerHTML = meaningful
+          .slice(0, 200)
+          .map(p => '<li><mark>' + escapeHTML(p) + '</mark></li>')
+          .join('');
+        missingEl.classList.add('show');
+      } else {
+        missingItems.innerHTML = '<li style="color:var(--text-dim)">No missing phrases of 2+ words.</li>';
+        missingEl.classList.add('show');
+      }
+    } else {
+      missingEl.classList.remove('show');
+    }
+
+    results.classList.add('show');
+  }
+
+  function flushRun(run, phrases, aTok) {
+    // run is sorted ascending source indices; expand to include intervening ignorable tokens
+    const lo = run[0], hi = run[run.length - 1];
+    let s = '';
+    for (let k = lo; k <= hi; k++) s += aTok[k];
+    s = s.trim();
+    if (s) phrases.push(s);
+  }
+</script>
+
+</body>
+</html>
