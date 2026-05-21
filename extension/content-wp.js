@@ -169,12 +169,80 @@ async function fillPost(p) {
   return { yoastFilled, categoryResult: catResult, acfFilled, authorResult };
 }
 
-// Walks a category path like ["Funeral","Videos"] and ticks each checkbox in turn.
-// For a single-element path, behaves like the old top-level Videos lookup.
+// Toggle a checkbox using the most thorough event sequence we can synthesize.
+// Real user clicks fire mousedown → mouseup → click on the label, then the
+// browser performs the default action (toggle + change on the input). ACF
+// (and other plugins) may bind to any of those events; programmatic
+// cb.click() fires only the click+change pair on the input. We dispatch the
+// full mouse sequence on the label first, then verify the state actually
+// changed and fall back through progressively more direct methods if it
+// didn't.
+function tickCheckboxForAcf(cb) {
+  if (!cb) return false;
+  if (cb.checked) {
+    // Already in the desired state — just fire change so ACF re-evaluates
+    if (window.jQuery) { try { window.jQuery(cb).trigger('change'); } catch {} }
+    return true;
+  }
+
+  // Shift focus from wherever it currently is (e.g. Yoast Draft.js editor).
+  try {
+    if (document.activeElement && document.activeElement.blur && document.activeElement !== cb) {
+      document.activeElement.blur();
+    }
+  } catch {}
+  try { cb.focus({ preventScroll: true }); } catch {}
+
+  const label = cb.closest('label');
+  const target = label || cb;
+  const opts = { bubbles: true, cancelable: true, view: window };
+
+  // Full mouse event sequence on the label (or checkbox if no label)
+  try { target.dispatchEvent(new MouseEvent('mousedown', opts)); } catch {}
+  try { target.dispatchEvent(new MouseEvent('mouseup',   opts)); } catch {}
+
+  // Native click — if target is the label, browser may toggle the checkbox
+  try { target.click(); } catch {}
+
+  // Verify state changed; if not, click the input directly.
+  if (!cb.checked) {
+    try { cb.click(); } catch {}
+  }
+
+  // Final fallback: set the property and dispatch change manually.
+  if (!cb.checked) {
+    cb.checked = true;
+    try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch {}
+  }
+
+  // jQuery change as a belt for jQuery-bound listeners
+  if (window.jQuery) {
+    try { window.jQuery(cb).trigger('change'); } catch {}
+  }
+
+  return cb.checked;
+}
+
+// Nudge ACF to re-evaluate its location rules. Different ACF versions expose
+// different APIs; try every one we know about, plus WP's own categories-updated
+// event which ACF and other plugins sometimes listen for.
+function nudgeAcf() {
+  if (window.acf) {
+    try { window.acf.doAction && window.acf.doAction('change'); } catch {}
+    try { window.acf.doAction && window.acf.doAction('refresh'); } catch {}
+    try { window.acf.do_action && window.acf.do_action('change'); } catch {}
+    try { window.acf.do_action && window.acf.do_action('refresh'); } catch {}
+  }
+  if (window.jQuery) {
+    try { window.jQuery(document).trigger('acf/refresh'); } catch {}
+    try { window.jQuery(document).trigger('acf:change'); } catch {}
+    try { window.jQuery(document).trigger('wp-categories-updated'); } catch {}
+  }
+}
+
+// Walks a category path like ["Funeral","Videos"] and ticks each checkbox.
 // Subcategory matching is restricted to the previous level's <ul class="children">
 // so we never confuse, e.g., "Cemetery > Videos" with the desired "Funeral > Videos".
-// Returns {checked: string[], failed: string[], checkboxes: HTMLInputElement[]}.
-// `checkboxes` lets a caller re-toggle the exact same inputs (for ACF retry).
 function fillCategoryPath(path) {
   const checked = [];
   const failed = [];
@@ -187,7 +255,7 @@ function fillCategoryPath(path) {
     if (lbl.textContent.trim().toLowerCase() === wantTop) {
       const cb = lbl.querySelector('input[type="checkbox"]');
       if (cb) {
-        if (!cb.checked) cb.click();
+        if (!cb.checked) tickCheckboxForAcf(cb);
         checked.push(path[0]);
         checkboxes.push(cb);
         parentLi = lbl.parentElement;
@@ -210,7 +278,7 @@ function fillCategoryPath(path) {
       if (lbl.textContent.trim().toLowerCase() === want) {
         const cb = lbl.querySelector('input[type="checkbox"]');
         if (cb) {
-          if (!cb.checked) cb.click();
+          if (!cb.checked) tickCheckboxForAcf(cb);
           checked.push(path[i]);
           checkboxes.push(cb);
           parentLi = lbl.parentElement;
@@ -222,20 +290,22 @@ function fillCategoryPath(path) {
     if (!found) { failed.push(path[i]); break; }
   }
 
+  // Explicit ACF refresh in case the change events alone didn't trigger it.
+  nudgeAcf();
   return { checked, failed, checkboxes };
 }
 
-// Re-toggle a list of category checkboxes (uncheck + re-check) to fire fresh
-// `change` events. Used as an ACF retry trigger when the youtube_id field
-// didn't render after the initial click — typically because ACF's listener
-// wasn't bound yet on a freshly-loaded page.
+// Re-toggle a list of category checkboxes (uncheck + re-check) with the
+// thorough event sequence, then nudge ACF. Used when youtube_id didn't show
+// after the first click.
 async function retoggleCategories(checkboxes) {
   for (const cb of checkboxes) {
-    cb.click(); // uncheck
-    await new Promise(r => setTimeout(r, 80));
-    cb.click(); // re-check
-    await new Promise(r => setTimeout(r, 80));
+    tickCheckboxForAcf(cb); // uncheck
+    await new Promise(r => setTimeout(r, 150));
+    tickCheckboxForAcf(cb); // re-check
+    await new Promise(r => setTimeout(r, 150));
   }
+  nudgeAcf();
 }
 
 // Wait for ACF's JS to initialize. ACF exposes window.acf once its bundle
@@ -471,52 +541,25 @@ function toHtml(text) {
     .join('\n');
 }
 
-// Best-effort TinyMCE + textarea sync, in the background. Other fill steps
-// don't await this so they aren't blocked by the slow iframe boot.
+// Best-effort TinyMCE sync, in the background. Other fill steps don't await
+// this so they aren't blocked by the slow iframe boot.
 //
-// Why repeated re-writes: WordPress can blank our content moments after the
-// first write — TinyMCE init reading an empty iframe and syncing back to the
-// textarea, autosave restoring an old draft, heartbeat plugins, etc. To
-// survive whichever overwrite happens last, we re-apply the value several
-// times across ~6 seconds.
+// We deliberately do NOT run a reinforcement loop here — repeated setContent
+// calls during ACF's location-rule evaluation can interfere with ACF's
+// field-group rendering. The synchronous textarea write at the call site is
+// the source of truth for Save; this background sync is only for the Visual
+// editor preview, and one pass is enough on a fresh post.
 async function syncTinyMCEInBackground(html) {
-  const ta = document.getElementById('content');
-
-  // Initial wait for TinyMCE to mount; up to ~10 seconds.
-  let mounted = false;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 60; i++) { // up to ~12 seconds waiting for mount
     if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
-      mounted = true;
       try {
         const ed = window.tinymce.get('content');
         ed.setContent(html);
         ed.save();
-      } catch {/* mid-mount race — keep going */}
-      break;
+      } catch {/* mid-mount race — ignore */}
+      return;
     }
     await new Promise(r => setTimeout(r, 200));
-  }
-
-  // Reinforcement pass: re-apply textarea + TinyMCE every ~1s for 6 ticks.
-  // Each iteration only writes if the value drifted, so this is cheap.
-  for (let i = 0; i < 6; i++) {
-    await new Promise(r => setTimeout(r, 1000));
-    try {
-      if (ta && ta.value !== html) setNativeValue(ta, html);
-      if (mounted && window.tinymce && window.tinymce.get) {
-        const ed = window.tinymce.get('content');
-        if (ed && ed.getContent && ed.getContent() !== html) {
-          ed.setContent(html);
-          ed.save();
-        }
-      } else if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
-        // TinyMCE mounted late — catch up.
-        mounted = true;
-        const ed = window.tinymce.get('content');
-        ed.setContent(html);
-        ed.save();
-      }
-    } catch {/* ignore */}
   }
 }
 
