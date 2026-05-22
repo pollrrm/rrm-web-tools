@@ -56,12 +56,13 @@ async function fillPost(p) {
 
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
-  if (p.publishDate) ui.addStep('date',    `Publish: ${formatPublishLabel(p.publishDate)}`);
-  if (p.content)     ui.addStep('content', 'Content');
-  if (p.author)      ui.addStep('author',  'Author');
-  if (p.metaDesc)    ui.addStep('meta',    'Meta description (Yoast)');
+  if (p.publishDate) ui.addStep('date',     `Publish: ${formatPublishLabel(p.publishDate)}`);
+  if (p.content)     ui.addStep('content',  'Content');
+  if (p.author)      ui.addStep('author',   'Author');
+  if (p.seoTitle)    ui.addStep('seoTitle', 'SEO title (Yoast)');
+  if (p.metaDesc)    ui.addStep('meta',     'Meta description (Yoast)');
   ui.addStep('category', categoryStepLabel);
-  if (p.ytId)        ui.addStep('acf',     'YouTube ID (ACF)');
+  if (p.ytId)        ui.addStep('acf',      'YouTube ID (ACF)');
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -122,7 +123,16 @@ async function fillPost(p) {
     }
   }
 
-  // 3. Yoast SEO meta description (Draft.js, mounts async)
+  // 3a. Yoast SEO Title (Draft.js, same pattern as meta description)
+  let seoTitleFilled = false;
+  if (p.seoTitle) {
+    ui.update('seoTitle', 'running', 'waiting for Yoast');
+    seoTitleFilled = await fillYoastSeoTitle(p.seoTitle);
+    ui.update('seoTitle', seoTitleFilled ? 'done' : 'failed',
+      seoTitleFilled ? null : 'field not found');
+  }
+
+  // 3b. Yoast SEO meta description (Draft.js, mounts async)
   let yoastFilled = false;
   if (p.metaDesc) {
     ui.update('meta', 'running', 'waiting for Yoast');
@@ -601,6 +611,40 @@ async function fillYoastMetaDesc(value) {
     await new Promise(r => setTimeout(r, 200));
   }
   console.warn('[RRM Helper] Yoast meta description editor not found.');
+  return false;
+}
+
+// Fills Yoast SEO Title. Mirrors fillYoastMetaDesc — Yoast 18+ renders the
+// SEO Title field as a Draft.js contenteditable too, so the only reliable
+// way to populate it is to focus + select-all + execCommand('insertText').
+async function fillYoastSeoTitle(value) {
+  const draftSelectors = [
+    '#yoast-google-preview-title-metabox',                                         // Yoast 18+ Classic Editor metabox
+    '[id^="yoast-google-preview-title"]',                                          // any variant
+    'div.public-DraftEditor-content[aria-labelledby*="title"]'                     // generic fallback
+  ];
+  const legacySelectors = [
+    '#yoast_wpseo_title',
+    'input#yoast_wpseo_title',
+    'input[name="yoast_wpseo_title"]'
+  ];
+  for (let i = 0; i < 30; i++) {
+    for (const sel of draftSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.isContentEditable) {
+        return setDraftEditorText(el, value);
+      }
+    }
+    for (const sel of legacySelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        setNativeValue(el, value);
+        return true;
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] Yoast SEO title editor not found.');
   return false;
 }
 
