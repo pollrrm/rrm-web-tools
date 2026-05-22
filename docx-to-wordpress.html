@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>DOCX → WordPress HTML Converter</title>
+  <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel2: #1d2129;
+      --border: #2a2f3a;
+      --text: #e6e8ec;
+      --muted: #8a93a4;
+      --accent: #4f8cff;
+      --accent-dim: #2b4a8c;
+      --ok: #4ade80;
+      --warn: #ffb347;
+      --error: #ff5d6c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    header .sub {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 60px;
+    }
+
+    .dropzone {
+      display: block;
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 40px 24px;
+      text-align: center;
+      background: var(--panel);
+      transition: border-color .15s, background .15s;
+      cursor: pointer;
+    }
+
+    .dropzone:hover {
+      border-color: var(--accent-dim);
+    }
+
+    .dropzone.drag {
+      border-color: var(--accent);
+      background: #182234;
+    }
+
+    .dropzone .big {
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .dropzone .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dropzone input[type=file] {
+      display: none;
+    }
+
+    .dropzone .pick {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .status {
+      margin: 16px 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      font-size: 13px;
+      color: var(--muted);
+      display: none;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.ok {
+      color: var(--ok);
+      border-color: #1f4f37;
+    }
+
+    .status.err {
+      color: var(--error);
+      border-color: #4f1f27;
+    }
+
+    .results {
+      margin-top: 24px;
+      display: none;
+    }
+
+    .results.show {
+      display: block;
+    }
+
+    .field {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--field-accent, var(--border));
+      border-radius: 10px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+
+    /* Per-field accent colors — distinct visual identity */
+    .field.f-date  { --field-accent: #4f8cff; }   /* blue */
+    .field.f-title { --field-accent: #a78bfa; }   /* purple */
+    .field.f-seo   { --field-accent: #ffb347; }   /* orange */
+    .field.f-meta  { --field-accent: #38bdf8; }   /* cyan */
+    .field.f-html  { --field-accent: #4ade80; }   /* green */
+    .field.f-check { --field-accent: #facc15; }   /* yellow */
+
+    .field-head .icon {
+      display: inline-block;
+      margin-right: 8px;
+      font-size: 16px;
+      vertical-align: -2px;
+      filter: saturate(1.1);
+    }
+    .field.f-date .label,
+    .field.f-title .label,
+    .field.f-seo .label,
+    .field.f-meta .label,
+    .field.f-html .label,
+    .field.f-check .label {
+      color: var(--field-accent);
+    }
+
+    /* Two-column row for SEO Title + Meta Description */
+    .row-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .row-2col > .field { margin-bottom: 0; }
+    @media (max-width: 760px) {
+      .row-2col { grid-template-columns: 1fr; gap: 0; }
+      .row-2col > .field { margin-bottom: 14px; }
+    }
+
+    .field-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel2);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .field-head .label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+
+    .field-head .hint {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 10px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .field-head .actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .copy-btn,
+    .ghost-btn {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+
+    .copy-btn:hover,
+    .ghost-btn:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    .copy-btn.copied {
+      background: var(--ok);
+      color: #0f1115;
+      border-color: var(--ok);
+    }
+
+    .ghost-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .field-body {
+      padding: 12px 14px;
+    }
+
+    .field-body input,
+    .field-body textarea {
+      width: 100%;
+      background: transparent;
+      color: var(--text);
+      border: 0;
+      outline: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .field-body input {
+      padding: 4px 0;
+    }
+
+    .field-body textarea {
+      min-height: 60px;
+      line-height: 1.5;
+    }
+
+    .field-body textarea.html {
+      min-height: 360px;
+    }
+
+    /* Issues panel */
+    .issues-panel {
+      /* uses .field shell */
+    }
+
+    .lang-select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+
+    .issues-body {
+      padding: 12px 14px;
+    }
+
+    .group {
+      margin-bottom: 16px;
+    }
+
+    .group:last-child {
+      margin-bottom: 0;
+    }
+
+    .group-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge.error {
+      background: rgba(255, 93, 108, 0.15);
+      color: var(--error);
+    }
+
+    .badge.warn {
+      background: rgba(255, 179, 71, 0.15);
+      color: var(--warn);
+    }
+
+    .badge.ok {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--ok);
+    }
+
+    .issue {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      padding: 10px 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .issue.error {
+      border-left-color: var(--error);
+    }
+
+    .issue .msg {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .issue .ctx {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      background: #0b0d12;
+      padding: 6px 8px;
+      border-radius: 4px;
+      margin-top: 6px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .issue .fix {
+      color: var(--ok);
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .issue .fix-btn {
+      margin-top: 8px;
+      background: rgba(74, 222, 128, 0.12);
+      color: var(--ok);
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .issue .fix-btn:hover {
+      background: rgba(74, 222, 128, 0.2);
+    }
+
+    .issue.applied {
+      opacity: 0.5;
+    }
+
+    .issue.applied .fix-btn {
+      display: none;
+    }
+
+    .apply-all {
+      margin-bottom: 12px;
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--ok);
+      border: 1px solid rgba(74, 222, 128, 0.5);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .apply-all:hover {
+      background: rgba(74, 222, 128, 0.25);
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    mark {
+      background: rgba(255, 179, 71, 0.3);
+      color: var(--text);
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
+    mark.error {
+      background: rgba(255, 93, 108, 0.3);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    details.preview {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 14px;
+      padding: 0;
+    }
+
+    details.preview>summary {
+      padding: 12px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--muted);
+      user-select: none;
+    }
+
+    details.preview>summary:hover {
+      color: var(--text);
+    }
+
+    .preview-body {
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--border);
+      background: #fff;
+      color: #1a1a1a;
+      border-radius: 0 0 10px 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .preview-body h2 {
+      color: #1a1a1a;
+      margin-top: 1.4em;
+    }
+
+    .preview-body :first-child {
+      margin-top: 0;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 24px 16px 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div>
+      <h1>DOCX → WordPress HTML Converter</h1>
+      <div class="sub">Drop a blog .docx → get the date, title, SEO fields, ready-to-paste HTML, and a quality check.
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <label class="dropzone" id="drop">
+      <div class="big">Drop your .docx here</div>
+      <div class="small">or click to choose a file</div>
+      <span class="pick">Choose file</span>
+      <input type="file" id="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    </label>
+
+    <div class="status" id="status"></div>
+
+    <section class="results" id="results">
+      <div class="field f-date">
+        <div class="field-head">
+          <span class="label"><span class="icon">📅</span>Date <span class="hint">– blog publish date</span></span>
+          <!-- <button class="copy-btn" data-copy="date">Copy</button> -->
+        </div>
+        <div class="field-body"><input id="out-date" readonly></div>
+      </div>
+
+      <div class="field f-title">
+        <div class="field-head">
+          <span class="label"><span class="icon">📝</span>WordPress Title <span class="hint">– paste into the post title
+              field (becomes the H1)</span></span>
+          <button class="copy-btn" data-copy="title">Copy</button>
+        </div>
+        <div class="field-body"><input id="out-title" readonly></div>
+      </div>
+
+      <div class="row-2col">
+        <div class="field f-seo">
+          <div class="field-head">
+            <span class="label"><span class="icon">🔍</span>SEO Title Tag <span class="hint">– Yoast / Rank Math</span></span>
+            <button class="copy-btn" data-copy="seo">Copy</button>
+          </div>
+          <div class="field-body"><input id="out-seo" readonly></div>
+        </div>
+
+        <div class="field f-meta">
+          <div class="field-head">
+            <span class="label"><span class="icon">💬</span>Meta Description <span class="hint">– Yoast / Rank Math</span></span>
+            <button class="copy-btn" data-copy="meta">Copy</button>
+          </div>
+          <div class="field-body"><textarea id="out-meta" readonly></textarea></div>
+        </div>
+      </div>
+
+      <div class="field f-html">
+        <div class="field-head">
+          <span class="label"><span class="icon">🧩</span>HTML Content <span class="hint">– editable; paste into WP
+              Block Editor → Code editor</span></span>
+          <div class="actions">
+            <button class="ghost-btn" id="recheckBtn">Re-check</button>
+            <button class="copy-btn" data-copy="html">Copy</button>
+          </div>
+        </div>
+        <div class="field-body"><textarea id="out-html" class="html"></textarea></div>
+      </div>
+
+      <div class="field f-check issues-panel">
+        <div class="field-head">
+          <span class="label"><span class="icon">✅</span>Quality Check <span class="hint">– format, consistency &amp;
+              grammar issues in the HTML above</span></span>
+          <div class="actions">
+            <select class="lang-select" id="lang">
+              <option value="en-US">English (US)</option>
+              <option value="en-GB">English (UK)</option>
+              <option value="en">English (auto)</option>
+            </select>
+          </div>
+        </div>
+        <div class="issues-body" id="issues">
+          <div class="empty">Drop a .docx to see issues.</div>
+        </div>
+      </div>
+
+      <details class="preview" open>
+        <summary>Live preview (how the HTML will render)</summary>
+        <div class="preview-body" id="preview"></div>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    Runs entirely in your browser. Grammar check uses the public LanguageTool API.
+  </footer>
+
+  <script>
+    /* ============================================================
+       PART 1 — DOCX → WordPress conversion
+       ============================================================ */
+    const MONTHS = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    function plainText(htmlFragment) {
+      return htmlFragment
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    function normalize(s) {
+      return s
+        .replace(/[‘’′`]/g, "'")
+        .replace(/[“”″]/g, '"')
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function escapeHtmlForTag(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function splitBlocks(html) {
+      const out = [];
+      const re = /<(p|ul|ol)\b[^>]*>[\s\S]*?<\/\1>/g;
+      let m;
+      while ((m = re.exec(html)) !== null) out.push(m[0]);
+      return out;
+    }
+
+    function parseFromHtml(html, filename) {
+      const blocks = splitBlocks(html);
+
+      let dateText = "";
+      let titleText = "";
+      let bodyStart = 0;
+
+      for (let i = 0; i < blocks.length; i++) {
+        const text = plainText(blocks[i]);
+        if (/^\d{1,2}\.\d{1,2}$/.test(text)) {
+          dateText = text;
+          if (blocks[i + 1]) titleText = plainText(blocks[i + 1]);
+          bodyStart = i + 2;
+          break;
+        }
+      }
+      if (!titleText) {
+        for (let i = 0; i < blocks.length; i++) {
+          if (/^<p>\s*<strong>[\s\S]+?<\/strong>\s*<\/p>$/.test(blocks[i])) {
+            titleText = plainText(blocks[i]);
+            bodyStart = i + 1;
+            break;
+          }
+        }
+      }
+
+      let bodyEnd = blocks.length;
+      let seoTitle = "";
+      let metaDescription = "";
+      const h2Texts = [];
+
+      for (let i = bodyStart; i < blocks.length; i++) {
+        const text = plainText(blocks[i]);
+        if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) {
+          bodyEnd = i;
+        }
+        const seoMatch = text.match(/^SEO Title Tag:\s*(.+)$/i);
+        if (seoMatch) seoTitle = seoMatch[1].trim();
+        const metaMatch = text.match(/^Meta Description:\s*(.+)$/i);
+        if (metaMatch) metaDescription = metaMatch[1].trim();
+        if (/^H Tags Used\b/i.test(text) && i + 1 < blocks.length) {
+          const next = blocks[i + 1];
+          if (/^<(ul|ol)\b/i.test(next)) {
+            // Format 1: <ul>/<ol> with <li> items
+            const liRe = /<li[^>]*>([\s\S]*?)<\/li>/g;
+            let li;
+            while ((li = liRe.exec(next)) !== null) {
+              const liText = plainText(li[1]);
+              const h2 = liText.match(/^H2:\s*(.+)$/i);
+              if (h2) h2Texts.push(h2[1].trim());
+            }
+          } else {
+            // Format 2: plain <p> blocks each containing one "Hn: ..." entry
+            for (let j = i + 1; j < blocks.length; j++) {
+              const t = plainText(blocks[j]);
+              if (!/^H[1-6]:\s*/i.test(t)) break;
+              const h2 = t.match(/^H2:\s*(.+)$/i);
+              if (h2) h2Texts.push(h2[1].trim());
+            }
+          }
+        }
+      }
+
+      const h2Lookup = new Map();
+      for (const t of h2Texts) h2Lookup.set(normalize(t), t);
+
+      // Heuristic fallbacks — only used when the doc has NO H Tags Used list at all.
+      // When the writer provides the list, we trust it exactly (their source of truth).
+      const useFallbacks = h2Lookup.size === 0;
+      const SECTION_LABELS = /^(introduction|intro|conclusion|summary|overview|faq|frequently asked questions|tl;?dr|about|final thoughts|wrap[- ]?up|key takeaways|takeaways|references|sources|notes|appendix|getting started)$/i;
+
+      const outBlocks = [];
+      for (let i = bodyStart; i < bodyEnd; i++) {
+        const block = blocks[i];
+        const m = block.match(/^<p>\s*<strong>([\s\S]+?)<\/strong>\s*<\/p>$/);
+        if (m) {
+          const inner = plainText(m[1]);
+          const stripped = inner.replace(/^\d+[.):]?\s+/, "");
+          const matchedH2 = h2Lookup.has(normalize(inner)) || h2Lookup.has(normalize(stripped));
+          let promote = matchedH2;
+          if (!promote && useFallbacks) {
+            const numberedPattern = /^\d+\.\s+\S/.test(inner);
+            const labelOnly = SECTION_LABELS.test(inner.replace(/[:.!?]+$/, "").trim());
+            promote = numberedPattern || labelOnly;
+          }
+          if (promote) {
+            if (outBlocks.length > 0) outBlocks.push("<p>&nbsp;</p>");
+            outBlocks.push(`<h2>${escapeHtmlForTag(inner)}</h2>`);
+            continue;
+          }
+        }
+        outBlocks.push(block.replace(/[\s ]+<\/li>/g, "</li>"));
+      }
+      // Strip Word "Editor" / Smart Lookup junk anchors — empty <a> tags with no href
+      // (e.g. <a id="_Int_xyz"></a>, <a id="_Hlk..."></a>). Real hyperlinks have href and are kept.
+      function stripWordJunkAnchors(h) {
+        return h.replace(/<a\b((?:(?!\bhref\s*=)[^>])*?)>([\s\S]*?)<\/a>/gi, '$2');
+      }
+      const bodyHtml = stripWordJunkAnchors(outBlocks.join("\n"));
+
+      let formattedDate = dateText;
+      const dateFromName = filename.match(/^(\d{1,2})\.(\d{1,2})\b/);
+      if (/^\d{1,2}\.\d{1,2}$/.test(dateText)) {
+        const [mm, dd] = dateText.split(".").map(Number);
+        if (mm >= 1 && mm <= 12) {
+          const year = new Date().getFullYear();
+          formattedDate = `${MONTHS[mm - 1]} ${dd}, ${year}`;
+        }
+      } else if (dateFromName) {
+        const mm = parseInt(dateFromName[1], 10);
+        const dd = parseInt(dateFromName[2], 10);
+        if (mm >= 1 && mm <= 12) {
+          const year = new Date().getFullYear();
+          formattedDate = `${MONTHS[mm - 1]} ${dd}, ${year}`;
+        }
+      }
+
+      return {
+        date: formattedDate,
+        title: titleText,
+        seoTitle,
+        metaDescription,
+        bodyHtml,
+        h2Count: h2Texts.length,
+      };
+    }
+
+    /* ============================================================
+       PART 2 — Quality checks (format / consistency / grammar)
+       ============================================================ */
+
+    // Format / accessibility
+    function checkFormat(html) {
+      const issues = [];
+      const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+      doc.querySelectorAll('img').forEach(img => {
+        if (!img.hasAttribute('alt')) {
+          const src = img.getAttribute('src') || '';
+          issues.push({
+            sev: 'error',
+            msg: 'Image missing alt attribute',
+            ctx: img.outerHTML,
+            fix: 'Add alt="" (empty for decorative) or descriptive alt text.',
+            apply: (h) => {
+              if (!src) return h;
+              const srcEsc = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(`<img\\b([^>]*\\bsrc\\s*=\\s*["']?${srcEsc}["']?[^>]*?)(\\s*/?>)`, 'i');
+              return h.replace(re, (m, attrs, end) => /\balt\s*=/i.test(attrs) ? m : `<img${attrs} alt=""${end}`);
+            }
+          });
+        }
+        if (!img.hasAttribute('src') || !img.getAttribute('src').trim()) {
+          issues.push({ sev: 'error', msg: 'Image missing src', ctx: img.outerHTML });
+        }
+      });
+
+      const headings = [...doc.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+      let lastLevel = 0;
+      let h1Count = 0;
+      headings.forEach(h => {
+        const level = parseInt(h.tagName[1], 10);
+        if (level === 1) h1Count++;
+        if (lastLevel && level > lastLevel + 1) {
+          issues.push({ sev: 'warn', msg: `Heading skips levels (H${lastLevel} → H${level})`, ctx: h.outerHTML, fix: `Use H${lastLevel + 1} instead of H${level}.` });
+        }
+        if (!h.textContent.trim()) {
+          issues.push({ sev: 'error', msg: `Empty ${h.tagName}`, ctx: h.outerHTML });
+        }
+        lastLevel = level;
+      });
+      if (h1Count > 1) issues.push({ sev: 'warn', msg: `Multiple H1 tags (${h1Count}) — usually only one per page (the WordPress title becomes the H1).` });
+
+      doc.querySelectorAll('a').forEach(a => {
+        const href = a.getAttribute('href');
+        if (!href || !href.trim()) {
+          issues.push({ sev: 'warn', msg: 'Link missing href', ctx: a.outerHTML });
+        } else if (href === '#' || href === 'javascript:void(0)') {
+          issues.push({ sev: 'warn', msg: 'Placeholder href', ctx: a.outerHTML, fix: 'Replace # or javascript:void(0) with a real URL or use a button.' });
+        }
+        if (!a.textContent.trim() && !a.querySelector('img[alt]')) {
+          issues.push({ sev: 'error', msg: 'Link has no accessible text', ctx: a.outerHTML, fix: 'Add link text or aria-label.' });
+        }
+        const text = a.textContent.trim().toLowerCase();
+        if (['click here', 'here', 'read more', 'link'].includes(text)) {
+          issues.push({ sev: 'warn', msg: `Vague link text: "${text}"`, ctx: a.outerHTML, fix: 'Use descriptive link text that makes sense out of context.' });
+        }
+      });
+
+      const inlineStyled = doc.querySelectorAll('[style]').length;
+      if (inlineStyled > 5) {
+        issues.push({ sev: 'warn', msg: `${inlineStyled} elements use inline styles`, fix: 'Consider moving styles to a stylesheet for maintainability.' });
+      }
+
+      issues.push(...checkTagBalance(html));
+
+      const deprecated = ['center', 'font', 'marquee', 'blink', 'strike', 'big', 'tt'];
+      deprecated.forEach(tag => {
+        if (doc.querySelector(tag)) {
+          issues.push({ sev: 'warn', msg: `Deprecated tag: <${tag}>`, fix: `Replace <${tag}> with semantic HTML + CSS.` });
+        }
+      });
+
+      return issues;
+    }
+
+    function checkTagBalance(html) {
+      const issues = [];
+      const voidEls = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+      const stack = [];
+      const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/)?>/g;
+      let m;
+      while ((m = tagRe.exec(html)) !== null) {
+        const fullTag = m[0];
+        const name = m[1].toLowerCase();
+        const isClose = fullTag.startsWith('</');
+        const selfClose = !!m[2] || voidEls.has(name);
+        if (isClose) {
+          if (stack.length === 0) {
+            issues.push({ sev: 'error', msg: `Unexpected closing </${name}> with no matching open tag`, ctx: fullTag });
+          } else if (stack[stack.length - 1].name !== name) {
+            const opener = stack[stack.length - 1];
+            issues.push({ sev: 'error', msg: `Mismatched tag — expected </${opener.name}> but got </${name}>`, ctx: `${opener.tag} … ${fullTag}` });
+            const idx = [...stack].reverse().findIndex(s => s.name === name);
+            if (idx !== -1) stack.length = stack.length - idx - 1;
+          } else {
+            stack.pop();
+          }
+        } else if (!selfClose) {
+          stack.push({ name, tag: fullTag });
+        }
+      }
+      stack.forEach(s => issues.push({ sev: 'error', msg: `Unclosed tag <${s.name}>`, ctx: s.tag }));
+      return issues;
+    }
+
+    // Consistency
+    function checkConsistency(html) {
+      const issues = [];
+      const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+      // List item ending punctuation
+      doc.querySelectorAll('ul, ol').forEach(list => {
+        const items = [...list.children].filter(el => el.tagName === 'LI');
+        if (items.length < 3) return;
+        const endings = items.map(li => {
+          const text = li.textContent.replace(/[\s"'\)\]]+$/, '');
+          return /[.!?]$/.test(text) ? 'punct' : 'none';
+        });
+        const punctCount = endings.filter(e => e === 'punct').length;
+        if (punctCount > items.length / 2 && punctCount < items.length) {
+          items.forEach((li, idx) => {
+            if (endings[idx] === 'punct') return;
+            const fingerprint = li.textContent.trim().slice(-40);
+            issues.push({
+              sev: 'warn',
+              msg: `List item missing ending punctuation — ${punctCount}/${items.length} sibling items end with a period.`,
+              ctx: li.outerHTML.length > 300 ? li.outerHTML.slice(0, 300) + '…' : li.outerHTML,
+              fix: 'Add a period at the end to match siblings.',
+              apply: (h) => {
+                const liHtml = li.outerHTML;
+                if (h.includes(liHtml)) {
+                  return h.replace(liHtml, liHtml.replace(/<\/li>\s*$/, '.</li>'));
+                }
+                const escFP = fingerprint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const re = new RegExp(`(${escFP})(\\s*</li>)`, 'i');
+                return h.replace(re, '$1.$2');
+              }
+            });
+          });
+        }
+      });
+
+      // List item bold-prefix consistency
+      doc.querySelectorAll('ul, ol').forEach(list => {
+        const items = [...list.children].filter(el => el.tagName === 'LI');
+        if (items.length < 3) return;
+        const hasBoldPrefix = items.map(li => {
+          const first = li.firstElementChild;
+          if (!first || !['STRONG', 'B'].includes(first.tagName)) return false;
+          return li.textContent.trim().startsWith(first.textContent.trim());
+        });
+        const count = hasBoldPrefix.filter(Boolean).length;
+        if (count > items.length / 2 && count < items.length) {
+          items.forEach((li, idx) => {
+            if (hasBoldPrefix[idx]) return;
+            issues.push({
+              sev: 'warn',
+              msg: `List item missing bold prefix — ${count}/${items.length} siblings start with <strong>.`,
+              ctx: li.outerHTML.length > 300 ? li.outerHTML.slice(0, 300) + '…' : li.outerHTML
+            });
+          });
+        }
+      });
+
+      // Recurring label formatting
+      const labelStats = new Map();
+      function record(label, wrap) {
+        if (!labelStats.has(label)) labelStats.set(label, { strong: 0, em: 0, plain: 0 });
+        labelStats.get(label)[wrap]++;
+      }
+      function isLabel(text) {
+        const trimmed = text.trim();
+        if (!trimmed.endsWith(':')) return null;
+        const label = trimmed.slice(0, -1).trim();
+        const words = label.split(/\s+/).filter(Boolean);
+        if (words.length === 0 || words.length > 5) return null;
+        if (label.length < 2 || label.length > 50) return null;
+        if (!/^[A-Z]/.test(label)) return null;
+        return label;
+      }
+      doc.querySelectorAll('strong, b, em, i').forEach(el => {
+        if (el.children.length > 0) return;
+        const label = isLabel(el.textContent);
+        if (!label) return;
+        record(label, ['STRONG', 'B'].includes(el.tagName) ? 'strong' : 'em');
+      });
+      function walkPlain(node) {
+        if (node.nodeType === 1) {
+          if (['STRONG', 'B', 'EM', 'I', 'SCRIPT', 'STYLE'].includes(node.tagName)) return;
+          for (const child of node.childNodes) walkPlain(child);
+        } else if (node.nodeType === 3) {
+          const m = node.textContent.match(/^\s*([A-Z][^.:!?\n<>]{0,50}?):\s/);
+          if (!m) return;
+          const label = m[1].trim();
+          const words = label.split(/\s+/).filter(Boolean);
+          if (words.length === 0 || words.length > 5) return;
+          if (label.length < 2) return;
+          record(label, 'plain');
+        }
+      }
+      walkPlain(doc.body);
+
+      function wrapPlainLabel(html, label, wrapTag) {
+        const target = label + ':';
+        let result = '';
+        let i = 0;
+        while (i < html.length) {
+          const idx = html.indexOf(target, i);
+          if (idx === -1) { result += html.slice(i); break; }
+          const before = html.slice(Math.max(0, idx - 60), idx);
+          if (/<(strong|b|em|i)\b[^>]*>\s*$/i.test(before)) {
+            result += html.slice(i, idx + target.length);
+            i = idx + target.length;
+            continue;
+          }
+          const charBefore = idx > 0 ? html[idx - 1] : '\n';
+          if (idx === 0 || '>\n\t'.includes(charBefore) || (charBefore === ' ' && /[>\n]\s*$/.test(before))) {
+            result += html.slice(i, idx) + `<${wrapTag}>${target}</${wrapTag}>`;
+          } else {
+            result += html.slice(i, idx + target.length);
+          }
+          i = idx + target.length;
+        }
+        return result;
+      }
+
+      for (const [label, s] of labelStats) {
+        const total = s.strong + s.em + s.plain;
+        if (total < 2) continue;
+        if (s.strong > total / 2 && s.plain > 0) {
+          issues.push({
+            sev: 'warn',
+            msg: `"${label}:" appears ${total} times but isn't formatted consistently — ${s.strong} bolded, ${s.plain} plain.`,
+            fix: `Wrap plain occurrences as <strong>${label}:</strong> to match the majority.`,
+            apply: (h) => wrapPlainLabel(h, label, 'strong')
+          });
+        } else if (s.em > total / 2 && s.plain > 0) {
+          issues.push({
+            sev: 'warn',
+            msg: `"${label}:" appears ${total} times but isn't formatted consistently — ${s.em} italicized, ${s.plain} plain.`,
+            fix: `Wrap plain occurrences as <em>${label}:</em> to match the majority.`,
+            apply: (h) => wrapPlainLabel(h, label, 'em')
+          });
+        } else if (s.strong > 0 && s.em > 0 && s.plain === 0) {
+          issues.push({
+            sev: 'warn',
+            msg: `"${label}:" uses mixed emphasis — ${s.strong} <strong>, ${s.em} <em>. Pick one.`
+          });
+        }
+      }
+
+      // Heading number prefix consistency
+      const HEADING_EXEMPT = /^(introduction|intro|conclusion|summary|overview|faq|frequently asked questions|tl;?dr|about|final thoughts|wrap[- ]?up|key takeaways|takeaways|references|sources|notes|appendix|getting started)$/i;
+      ['h1', 'h2', 'h3', 'h4'].forEach(tag => {
+        const headings = [...doc.querySelectorAll(tag)];
+        if (headings.length < 3) return;
+        const numbered = headings.map(h => /^\s*\d+[.)]\s/.test(h.textContent));
+        const numCount = numbered.filter(Boolean).length;
+        if (numCount > headings.length / 2 && numCount < headings.length) {
+          headings.forEach((h, idx) => {
+            if (numbered[idx]) return;
+            const text = h.textContent.trim().replace(/[:.!?]+$/, '');
+            if (HEADING_EXEMPT.test(text)) return;
+            issues.push({
+              sev: 'warn',
+              msg: `${tag.toUpperCase()} missing number prefix — ${numCount}/${headings.length} other ${tag.toUpperCase()}s use "1.", "2." style.`,
+              ctx: h.outerHTML
+            });
+          });
+        }
+      });
+
+      // Heading number prefix PUNCTUATION consistency
+      // Catches typos like "10 Maintain..." when the rest of the headings are "1.", "2.", ..., "9."
+      ['h1', 'h2', 'h3', 'h4'].forEach(tag => {
+        const headings = [...doc.querySelectorAll(tag)];
+        if (headings.length < 3) return;
+        const SEP_NAMES = { '.': 'period', ')': 'paren', ':': 'colon', ' ': 'space-only' };
+        const numbered = headings
+          .map(h => {
+            const text = h.textContent.trim();
+            // Match: digits followed by either a separator char OR whitespace
+            const m = text.match(/^(\d+)([.):]|\s)/);
+            if (!m) return null;
+            const sepRaw = m[2];
+            const style = /\s/.test(sepRaw) ? 'space-only' : SEP_NAMES[sepRaw] || 'unknown';
+            return { h, text, num: m[1], sepRaw, style };
+          })
+          .filter(Boolean);
+        if (numbered.length < 3) return;
+        const counts = {};
+        numbered.forEach(n => counts[n.style] = (counts[n.style] || 0) + 1);
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const [dominantStyle, dominantCount] = sorted[0];
+        if (dominantCount === numbered.length) return; // all consistent
+        if (dominantCount <= numbered.length / 2) return; // no clear majority
+        if (dominantStyle === 'space-only' || dominantStyle === 'unknown') return; // can't fix to "no punctuation"
+        const dominantSep = dominantStyle === 'period' ? '.' : dominantStyle === 'paren' ? ')' : ':';
+        numbered.forEach(n => {
+          if (n.style === dominantStyle) return;
+          const visibleSep = n.style === 'space-only' ? '' : n.sepRaw;
+          issues.push({
+            sev: 'warn',
+            msg: `${tag.toUpperCase()} number prefix uses "${n.num}${visibleSep}" but ${dominantCount}/${numbered.length} other ${tag.toUpperCase()}s use "${dominantSep}" after the number.`,
+            ctx: n.h.outerHTML,
+            fix: `Change "${n.num}${visibleSep}" to "${n.num}${dominantSep}" to match the rest.`,
+            apply: (html) => {
+              // Find the heading in the raw HTML and replace its leading number+separator
+              const tagRe = new RegExp(`(<${tag}\\b[^>]*>)([\\s\\S]*?)(</${tag}>)`, 'gi');
+              return html.replace(tagRe, (full, open, inner, close) => {
+                const innerText = inner.replace(/<[^>]+>/g, '').trim();
+                if (innerText !== n.text) return full;
+                const fixed = inner.replace(/^(\s*(?:<[^>]+>\s*)*)(\d+)([.):]?)(\s+)/, (mAll, lead, num, sep, ws) => {
+                  if (num !== n.num) return mAll;
+                  return `${lead}${num}${dominantSep}${ws}`;
+                });
+                return `${open}${fixed}${close}`;
+              });
+            }
+          });
+        });
+      });
+
+      // Heading case consistency
+      ['h1', 'h2', 'h3', 'h4'].forEach(tag => {
+        const headings = [...doc.querySelectorAll(tag)];
+        if (headings.length < 3) return;
+        const stopwords = new Set(['a', 'an', 'and', 'or', 'the', 'of', 'for', 'to', 'in', 'on', 'at', 'by', 'with', 'from', 'as', 'but', 'is', 'it']);
+        const styles = headings.map(h => {
+          const text = h.textContent.replace(/^\s*\d+[.)]\s*/, '').trim();
+          const words = text.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w.toLowerCase()));
+          if (words.length < 2) return null;
+          const capCount = words.filter(w => /^[A-Z]/.test(w)).length;
+          return capCount / words.length >= 0.7 ? 'title' : 'sentence';
+        });
+        const valid = styles.filter(s => s !== null);
+        if (valid.length < 3) return;
+        const titleCount = valid.filter(s => s === 'title').length;
+        const sentenceCount = valid.length - titleCount;
+        const majority = titleCount > sentenceCount ? 'title' : 'sentence';
+        const majorityCount = Math.max(titleCount, sentenceCount);
+        const minorityCount = Math.min(titleCount, sentenceCount);
+        if (majorityCount > valid.length / 2 && minorityCount > 0) {
+          headings.forEach((h, idx) => {
+            if (styles[idx] === null || styles[idx] === majority) return;
+            issues.push({
+              sev: 'warn',
+              msg: `${tag.toUpperCase()} uses ${styles[idx] === 'title' ? 'Title Case' : 'sentence case'} while ${majorityCount}/${valid.length} other ${tag.toUpperCase()}s use ${majority === 'title' ? 'Title Case' : 'sentence case'}.`,
+              ctx: h.outerHTML
+            });
+          });
+        }
+      });
+
+      return issues;
+    }
+
+    // Grammar via LanguageTool
+    function extractText(html) {
+      const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+      doc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+      return doc.body.innerText || doc.body.textContent || '';
+    }
+    async function checkGrammar(text, language) {
+      if (!text.trim()) return { matches: [] };
+      const params = new URLSearchParams();
+      params.append('text', text);
+      params.append('language', language);
+      const res = await fetch('https://api.languagetool.org/v2/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      });
+      if (!res.ok) throw new Error(`LanguageTool: HTTP ${res.status}`);
+      return await res.json();
+    }
+
+    /* ============================================================
+       PART 3 — UI wiring
+       ============================================================ */
+    const $ = (id) => document.getElementById(id);
+    const drop = $("drop");
+    const fileInput = $("file");
+    const statusEl = $("status");
+    const results = $("results");
+    const issuesEl = $("issues");
+    const htmlOut = $("out-html");
+    const previewEl = $("preview");
+
+    function setStatus(msg, kind) {
+      statusEl.innerHTML = msg;
+      statusEl.className = "status show" + (kind ? " " + kind : "");
+    }
+
+    function syncPreview() {
+      previewEl.innerHTML = htmlOut.value || "";
+    }
+
+    htmlOut.addEventListener("input", syncPreview);
+
+    async function handleFile(file) {
+      if (!file) return;
+      if (!/\.docx$/i.test(file.name)) {
+        setStatus("Please drop a .docx file (Word document).", "err");
+        return;
+      }
+      setStatus(`<span class="spinner"></span>Reading ${escapeHtml(file.name)}…`);
+      try {
+        const buffer = await file.arrayBuffer();
+        const conv = await mammoth.convertToHtml({ arrayBuffer: buffer });
+        const parsed = parseFromHtml(conv.value, file.name);
+
+        $("out-date").value = parsed.date || "";
+        $("out-title").value = parsed.title || "";
+        $("out-seo").value = parsed.seoTitle || "";
+        $("out-meta").value = parsed.metaDescription || "";
+        htmlOut.value = parsed.bodyHtml || "";
+        syncPreview();
+
+        results.classList.add("show");
+        setStatus(
+          `Parsed ${escapeHtml(file.name)} — found ${parsed.h2Count} H2 section${parsed.h2Count === 1 ? "" : "s"}. Running quality check…`,
+          "ok"
+        );
+        await runChecks();
+      } catch (err) {
+        console.error(err);
+        setStatus("Could not read that file: " + escapeHtml(err.message || String(err)), "err");
+      }
+    }
+
+    drop.addEventListener("click", (e) => {
+      if (e.target.tagName !== "INPUT") fileInput.click();
+    });
+    fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+    ["dragenter", "dragover"].forEach(ev =>
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); })
+    );
+    ["dragleave", "drop"].forEach(ev =>
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); })
+    );
+    drop.addEventListener("drop", (e) => {
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+
+    document.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".copy-btn");
+      if (!btn) return;
+      const map = {
+        date: "out-date", title: "out-title", seo: "out-seo",
+        meta: "out-meta", html: "out-html"
+      };
+      const el = $(map[btn.dataset.copy]);
+      if (!el) return;
+      try {
+        await navigator.clipboard.writeText(el.value);
+        const orig = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1400);
+      } catch {
+        el.select();
+        document.execCommand("copy");
+      }
+    });
+
+    $("recheckBtn").addEventListener("click", () => runChecks());
+
+    /* --------- Issue rendering --------- */
+    async function runChecks() {
+      const html = htmlOut.value;
+      if (!html.trim()) {
+        issuesEl.innerHTML = '<div class="empty">Drop a .docx to see issues.</div>';
+        return;
+      }
+      const recheckBtn = $("recheckBtn");
+      recheckBtn.disabled = true;
+      issuesEl.innerHTML = '<div class="empty"><span class="spinner"></span>Running checks…</div>';
+
+      const fmtIssues = checkFormat(html);
+      const consistencyIssues = checkConsistency(html);
+
+      let grammarIssues = [];
+      let grammarError = null;
+      try {
+        const text = extractText(html);
+        const res = await checkGrammar(text, $("lang").value);
+        grammarIssues = (res.matches || []).map(m => ({
+          sev: m.rule?.issueType === 'misspelling' ? 'error' : 'warn',
+          msg: m.message,
+          ctx: m.context?.text
+            ? m.context.text.slice(0, m.context.offset) +
+            '«' + m.context.text.substr(m.context.offset, m.context.length) + '»' +
+            m.context.text.slice(m.context.offset + m.context.length)
+            : '',
+          fix: (m.replacements || []).slice(0, 3).map(r => r.value).join(', ')
+        }));
+      } catch (e) {
+        grammarError = e.message;
+      }
+
+      renderIssues(fmtIssues, consistencyIssues, grammarIssues, grammarError);
+      recheckBtn.disabled = false;
+    }
+
+    function renderIssues(fmtIssues, consistencyIssues, grammarIssues, grammarError) {
+      const fmtErr = fmtIssues.filter(i => i.sev === 'error').length;
+      const fmtWarn = fmtIssues.filter(i => i.sev === 'warn').length;
+      const conWarn = consistencyIssues.filter(i => i.sev === 'warn').length;
+      const conErr = consistencyIssues.filter(i => i.sev === 'error').length;
+      const grErr = grammarIssues.filter(i => i.sev === 'error').length;
+      const grWarn = grammarIssues.filter(i => i.sev === 'warn').length;
+
+      const allIssues = [...fmtIssues, ...consistencyIssues, ...grammarIssues];
+      window._issues = allIssues;
+      const fixableCount = allIssues.filter(i => typeof i.apply === 'function').length;
+
+      const renderIssue = (i) => {
+        const idx = allIssues.indexOf(i);
+        let h = `<div class="issue ${i.sev}" data-issue-idx="${idx}">`;
+        h += `<div class="msg">${escapeHtml(i.msg)}</div>`;
+        if (i.ctx) h += `<div class="ctx">${escapeHtml(i.ctx)}</div>`;
+        if (i.fix) h += `<div class="fix">→ ${escapeHtml(i.fix)}</div>`;
+        if (typeof i.apply === 'function') {
+          h += `<button class="fix-btn" data-fix-idx="${idx}">Apply Fix</button>`;
+        }
+        h += `</div>`;
+        return h;
+      };
+
+      let html = '';
+      const total = fmtIssues.length + consistencyIssues.length + grammarIssues.length;
+      if (total === 0 && !grammarError) {
+        html += `<div class="group"><div class="group-title">All Checks <span class="badge ok">clean ✓</span></div><div class="empty">No issues found in the converted HTML.</div></div>`;
+        issuesEl.innerHTML = html;
+        return;
+      }
+
+      if (fixableCount > 0) {
+        html += `<button class="apply-all" id="applyAllBtn">Apply All Safe Fixes (${fixableCount})</button>`;
+      }
+
+      // Format
+      html += '<div class="group">';
+      html += `<div class="group-title">Format & Accessibility `;
+      if (fmtErr) html += `<span class="badge error">${fmtErr} error${fmtErr === 1 ? '' : 's'}</span>`;
+      if (fmtWarn) html += `<span class="badge warn">${fmtWarn} warning${fmtWarn === 1 ? '' : 's'}</span>`;
+      if (!fmtIssues.length) html += `<span class="badge ok">clean</span>`;
+      html += `</div>`;
+      if (!fmtIssues.length) html += '<div class="empty">No format issues.</div>';
+      else fmtIssues.forEach(i => { html += renderIssue(i); });
+      html += '</div>';
+
+      // Consistency
+      html += '<div class="group">';
+      html += `<div class="group-title">Consistency `;
+      if (conErr) html += `<span class="badge error">${conErr} error${conErr === 1 ? '' : 's'}</span>`;
+      if (conWarn) html += `<span class="badge warn">${conWarn} warning${conWarn === 1 ? '' : 's'}</span>`;
+      if (!consistencyIssues.length) html += `<span class="badge ok">clean</span>`;
+      html += `</div>`;
+      if (!consistencyIssues.length) html += '<div class="empty">No consistency issues.</div>';
+      else consistencyIssues.forEach(i => { html += renderIssue(i); });
+      html += '</div>';
+
+      // Grammar
+      html += '<div class="group">';
+      html += `<div class="group-title">Grammar & Spelling `;
+      if (grammarError) html += `<span class="badge error">error</span>`;
+      else {
+        if (grErr) html += `<span class="badge error">${grErr} error${grErr === 1 ? '' : 's'}</span>`;
+        if (grWarn) html += `<span class="badge warn">${grWarn} suggestion${grWarn === 1 ? '' : 's'}</span>`;
+        if (!grammarIssues.length) html += `<span class="badge ok">clean</span>`;
+      }
+      html += `</div>`;
+      if (grammarError) {
+        html += `<div class="issue error"><div class="msg">Could not reach LanguageTool API</div><div class="ctx">${escapeHtml(grammarError)}</div><div class="fix">→ Check your internet connection. Public API is rate-limited (~20 req/min).</div></div>`;
+      } else if (!grammarIssues.length) {
+        html += '<div class="empty">No grammar issues.</div>';
+      } else {
+        grammarIssues.forEach(i => {
+          const idx = allIssues.indexOf(i);
+          html += `<div class="issue ${i.sev}" data-issue-idx="${idx}">`;
+          html += `<div class="msg">${escapeHtml(i.msg)}</div>`;
+          if (i.ctx) {
+            const ctxHtml = escapeHtml(i.ctx).replace('«', `<mark class="${i.sev}">`).replace('»', '</mark>');
+            html += `<div class="ctx">${ctxHtml}</div>`;
+          }
+          if (i.fix) html += `<div class="fix">→ Suggestions: ${escapeHtml(i.fix)}</div>`;
+          html += `</div>`;
+        });
+      }
+      html += '</div>';
+
+      issuesEl.innerHTML = html;
+
+      // Wire fix buttons
+      issuesEl.querySelectorAll('.fix-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = +btn.dataset.fixIdx;
+          const issue = window._issues[idx];
+          if (!issue || typeof issue.apply !== 'function') return;
+          const before = htmlOut.value;
+          const after = issue.apply(before);
+          if (after === before) {
+            btn.textContent = 'No change';
+            btn.disabled = true;
+            return;
+          }
+          htmlOut.value = after;
+          syncPreview();
+          btn.closest('.issue').classList.add('applied');
+          btn.textContent = 'Applied ✓';
+          btn.disabled = true;
+        });
+      });
+
+      const applyAll = $('applyAllBtn');
+      if (applyAll) {
+        applyAll.addEventListener('click', () => {
+          let html = htmlOut.value;
+          let count = 0;
+          window._issues.forEach((issue, idx) => {
+            if (typeof issue.apply !== 'function') return;
+            const before = html;
+            html = issue.apply(html);
+            if (html !== before) {
+              count++;
+              const node = issuesEl.querySelector(`.issue[data-issue-idx="${idx}"]`);
+              if (node) {
+                node.classList.add('applied');
+                const btn = node.querySelector('.fix-btn');
+                if (btn) { btn.textContent = 'Applied ✓'; btn.disabled = true; }
+              }
+            }
+          });
+          if (count === 0) {
+            applyAll.textContent = 'No fixes applicable';
+            applyAll.disabled = true;
+            return;
+          }
+          htmlOut.value = html;
+          syncPreview();
+          applyAll.textContent = `Applied ${count} fix${count === 1 ? '' : 'es'} ✓`;
+          applyAll.disabled = true;
+        });
+      }
+    }
+  </script>
+</body>
+
+</html>

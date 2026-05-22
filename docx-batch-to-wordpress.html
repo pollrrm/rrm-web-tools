@@ -555,37 +555,41 @@ const SITES = [
   {
     id: "rrmathome",
     name: "RRM@home",
+    target: "rrmathome",
     aliases: ["rrmathome", "rrm@home", "rrm at home", "rrmhome"],
     topics: [
-      { id: "flooring", name: "Flooring", category: "Blogs" },
-      { id: "hvac", name: "HVAC", category: "Blogs" },
-      { id: "windows", name: "Windows and Doors", category: "Blogs" }
+      { id: "flooring", name: "Flooring",          category: "Flooring > Blogs", categoryPath: ["Flooring", "Blogs"], primaryCategory: null },
+      { id: "hvac",     name: "HVAC",              category: "HVAC > Blogs",     categoryPath: ["HVAC",     "Blogs"], primaryCategory: null },
+      { id: "windows",  name: "Windows and Doors", category: "Blogs",            categoryPath: ["Blogs"],              primaryCategory: null }
     ]
   },
   {
     id: "rrm",
     name: "RRM",
+    target: "rrm",
     aliases: ["rrm"],
     topics: [
-      { id: "funeral", name: "Funeral", category: "Funeral > Blogs" },
-      { id: "cemetery", name: "Cemetery", category: "Cemetery > Blogs" }
+      { id: "funeral",  name: "Funeral",  category: "Funeral > Blogs",  categoryPath: ["Funeral",  "Blogs"], primaryCategory: "Funeral"  },
+      { id: "cemetery", name: "Cemetery", category: "Cemetery > Blogs", categoryPath: ["Cemetery", "Blogs"], primaryCategory: "Cemetery" }
     ]
   },
   {
     id: "scmm",
     name: "SCMM",
+    target: "scmm",
     aliases: ["scmm"],
     topics: [
-      { id: "homehealth", name: "Home Health", category: "Blogs" },
-      { id: "homecare", name: "Home Care", category: "Blogs" }
+      { id: "homehealth", name: "Home Health", category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null },
+      { id: "homecare",   name: "Home Care",   category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null }
     ]
   },
   {
     id: "hospice",
-    name: "Hospice",
+    name: "Hospice Haven",
+    target: "hospice",
     aliases: ["hospice"],
     topics: [
-      { id: "hospice", name: "Hospice", category: "Blogs" }
+      { id: "hospice", name: "Hospice", category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null }
     ]
   }
 ];
@@ -1063,8 +1067,38 @@ function updateCatSummary() {
   if (!topic) { catSummary.textContent = ""; return; }
   catSummary.innerHTML = `Will post to <span class="cat-chip">${escapeHtml(topic.category)}</span> on <strong>${escapeHtml(site.name)}</strong>`;
 }
-siteSelect.addEventListener("change", () => populateTopicSelect(siteSelect.value));
-topicSelect.addEventListener("change", updateCatSummary);
+
+// Returns the current site/topic selection straight from the dropdowns —
+// this is the source of truth (NOT currentBatch, which only tracks posts).
+function getSelectedSiteAndTopic() {
+  const site = SITES.find(s => s.id === siteSelect.value) || null;
+  const topic = site ? (site.topics.find(t => t.id === topicSelect.value) || null) : null;
+  return { site, topic };
+}
+
+// Updates every already-rendered "Fill on …" button to reflect the current
+// site/topic dropdown selection. Called whenever the dropdowns change so
+// cards expanded before the user picked a site update live instead of
+// staying on "Pick site to enable Fill".
+function updateAllFillButtons() {
+  const { site, topic } = getSelectedSiteAndTopic();
+  const label = site
+    ? `Fill on ${escapeHtml(site.name)}${topic ? ' (' + escapeHtml(topic.name) + ')' : ''}`
+    : 'Pick site to enable Fill';
+  document.querySelectorAll('.fill-wp-btn').forEach(btn => {
+    btn.innerHTML = label;
+    btn.disabled = !site;
+  });
+}
+
+siteSelect.addEventListener("change", () => {
+  populateTopicSelect(siteSelect.value);
+  updateAllFillButtons();
+});
+topicSelect.addEventListener("change", () => {
+  updateCatSummary();
+  updateAllFillButtons();
+});
 
 function detectSiteAndTopic(zipName, entries) {
   const haystack = (zipName + " " + entries.map(e => e.path).join(" ")).toLowerCase();
@@ -1234,7 +1268,25 @@ function renderCard(post) {
 
 function renderCardBody(card, post) {
   const body = card.querySelector(".card-body");
+  // Read live from the dropdowns (currentBatch only tracks posts, not selection)
+  const { site, topic } = getSelectedSiteAndTopic();
+  const fillBtnLabel = site
+    ? `Fill on ${escapeHtml(site.name)}${topic ? ' (' + escapeHtml(topic.name) + ')' : ''}`
+    : 'Pick site to enable Fill';
   body.innerHTML = `
+    <div class="field" style="margin-bottom:14px">
+      <div class="field-head">
+        <span class="label"><span class="icon">🚀</span>Send to WordPress</span>
+      </div>
+      <div class="field-body" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        <button class="fill-wp-btn" data-post-id="${post.id}" ${site ? '' : 'disabled'}
+                style="background:#8b5cf6;color:white;border:0;padding:9px 16px;border-radius:6px;font-weight:600;cursor:pointer">
+          ${fillBtnLabel}
+        </button>
+        <span class="fill-wp-status" style="font-size:13px;color:var(--muted)"></span>
+      </div>
+    </div>
+
     <div class="field f-date">
       <div class="field-head">
         <span class="label"><span class="icon">📅</span>Date</span>
@@ -1301,6 +1353,64 @@ function renderCardBody(card, post) {
     syncPreview();
     post.parsed.bodyHtml = htmlArea.value; // keep model in sync
   });
+
+  // Fill on WP button — dispatches the parsed post + selected site config to
+  // the RRM WP Helper extension via window.postMessage. content-tool.js
+  // catches it, stashes the payload in chrome.storage.local, and opens the
+  // target site's wp-admin/post-new.php in a new tab. content-wp.js then
+  // fills the editor fields. Requires the extension to be installed.
+  const fillBtn = body.querySelector(".fill-wp-btn");
+  const fillStatus = body.querySelector(".fill-wp-status");
+  if (fillBtn) {
+    fillBtn.addEventListener("click", () => {
+      // Always read the LIVE dropdown selection — the user can change sites
+      // after expanding a card.
+      const { site, topic } = getSelectedSiteAndTopic();
+      if (!site || !site.target) {
+        if (fillStatus) fillStatus.textContent = 'No site selected — pick one from the Site dropdown at the top.';
+        return;
+      }
+      // Parse the date for publishDate
+      let publishDate = null;
+      if (post.parsed.dateMM && post.parsed.dateDD) {
+        publishDate = {
+          year: new Date().getFullYear(),
+          month: post.parsed.dateMM,
+          day: post.parsed.dateDD,
+          hour: 5,
+          minute: 0
+        };
+      }
+      const payload = {
+        title: post.parsed.title || '',
+        content: htmlArea.value || '',                 // live editable HTML
+        metaDesc: post.parsed.metaDescription || '',
+        seoTitle: post.parsed.seoTitle || '',
+        author: 'Welton Hong',
+        thumbUrl: null,
+        filename: post.docxName,
+        categories: topic?.categoryPath || ['Blogs'],
+        primaryCategory: topic?.primaryCategory || null,
+        publishDate
+      };
+      // Blog-specific message type — only the RRM Blog Helper extension
+      // responds to this, leaving the RRM WP Helper (video) extension alone.
+      window.postMessage({
+        type: 'RRM_BLOG_SEND_TO_WP',
+        target: site.target,
+        payload
+      }, '*');
+      if (fillStatus) {
+        const original = fillBtn.textContent;
+        fillBtn.textContent = 'Opening new tab…';
+        fillStatus.textContent = '';
+        setTimeout(() => {
+          fillBtn.textContent = original;
+          fillStatus.textContent = 'Tab opened — check the WP page for the fill progress.';
+        }, 1200);
+      }
+    });
+  }
 
   // Copy buttons — find the matching input/textarea in the same field
   body.querySelectorAll(".copy-btn[data-copy-text]").forEach(btn => {

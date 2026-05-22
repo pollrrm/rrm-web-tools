@@ -1,35 +1,115 @@
-// Runs on the WordPress Classic Editor new-post / edit-post pages.
+// RRM Blog Helper — Runs on the WordPress Classic Editor new-post / edit-post pages.
 // Two entry points fill the same set of fields:
-//   1. chrome.storage.local "rrm_pending" — used by the YT tool's "Send to ..." buttons
-//   2. chrome.runtime message "RRM_FILL_POST"  — used by the extension's side panel
-// Fields filled, in this order (fast → slow, with the most-blocking last):
+//   1. chrome.storage.local "rrm_blog_pending" — DOCX Batch tool's per-card Fill buttons
+//   2. chrome.runtime message "RRM_BLOG_FILL_POST" — the extension's side panel
+//
+// NOTE: This is the BLOG variant. The message types and storage keys are
+// blog-specific so the BLOG and VIDEO extensions never step on each other's
+// messages, even though both inject content scripts on the same WP pages.
+//
+// Fields filled, in this order:
 //   1. Title
 //   2. Publish Date (Classic Editor mm/jj/aa/hh/mn inputs + Edit/OK toggle)
-//   3. Content (textarea sync; TinyMCE visual syncs in the background)
-//   4. Author dropdown (display name match)
+//   3. Author dropdown (display name match)
+//   4. Yoast SEO Title (Draft.js)
 //   5. Yoast SEO Meta Description (Draft.js)
-//   6. Categories (single top-level OR a path like ["Funeral","Videos"])
-//   7. ACF "youtube_id" field (rendered after the category click)
+//   6. Categories — instant click, no ACF wait (blog posts have no ACF gate)
+//   7. Yoast Primary Category (Make Primary link)
+//   8. Content (textarea + TinyMCE) — LAST, then a background reinforcement
+//      loop re-applies it for ~9s to defeat WP autosave / TinyMCE re-saves
 
-// ---- Entry point 1: storage-based (existing flow) ----
+// ---- Entry point 1: storage-based (DOCX Batch tool Fill buttons) ----
+// Runs on a freshly-loaded tab. Two things can go wrong here:
+//   1. Yoast/TinyMCE haven't mounted yet → handled by `waitForPage: true`.
+//   2. Yoast crashed on initial render (some WPBakery/Yoast combos do this
+//      on Hospice and similar sites) → we detect "Something went wrong.
+//      Please reload the page" and auto-reload ONCE. Yoast typically recovers
+//      on the second load. We re-stash the payload with a reload counter so
+//      the next iteration picks it up and doesn't infinite-loop.
 (async function () {
-  const { rrm_pending } = await chrome.storage.local.get('rrm_pending');
-  if (!rrm_pending || !rrm_pending.payload) return;
-  if (Date.now() - rrm_pending.ts > 60000) {
-    chrome.storage.local.remove('rrm_pending');
+  const { rrm_blog_pending } = await chrome.storage.local.get('rrm_blog_pending');
+  if (!rrm_blog_pending || !rrm_blog_pending.payload) return;
+  if (Date.now() - rrm_blog_pending.ts > 60000) {
+    chrome.storage.local.remove('rrm_blog_pending');
     return;
   }
-  chrome.storage.local.remove('rrm_pending');
-  await fillPost(rrm_pending.payload);
+
+  const reloadCount = rrm_blog_pending.reloadCount || 0;
+
+  // Give Yoast up to 15 seconds to mount before deciding it's broken. Yoast
+  // on Hospice has been seen taking 8+ seconds when WPBakery loads its own
+  // assets first.
+  const yoastSignal = await waitForYoastReadyOrError(15000);
+
+  if (yoastSignal === 'error' && reloadCount < 1) {
+    console.log('[RRM Blog Helper] Yoast crashed on initial load — auto-reloading once.');
+    // Re-stash the payload with an incremented reload counter so the next
+    // page load picks it up and tries again. Don't infinite-loop: only one
+    // auto-reload attempt per fill request.
+    await chrome.storage.local.set({
+      rrm_blog_pending: {
+        ...rrm_blog_pending,
+        ts: Date.now(),
+        reloadCount: reloadCount + 1
+      }
+    });
+    location.reload();
+    return;
+  }
+
+  // OK to proceed — either Yoast is ready, or we've already reloaded once
+  // and we'll do the best we can with whatever state Yoast is in.
+  chrome.storage.local.remove('rrm_blog_pending');
+  await fillPost(rrm_blog_pending.payload, { waitForPage: true });
 })();
+
+// Polls up to `timeoutMs` waiting for a Yoast Draft.js editor to mount.
+// Brief crashes that resolve before timeout don't trigger reload — we only
+// declare 'error' if the editor STILL hasn't mounted AND the error banner
+// is showing at the end of the wait window. Cuts down on false-positive
+// reloads while still catching the actual stuck-crash case on Hospice.
+async function waitForYoastReadyOrError(timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (document.querySelector('div.public-DraftEditor-content[contenteditable="true"]')) {
+      return 'ready';
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  // Wait expired. Final check — is Yoast actually broken, or just slow?
+  if (document.querySelector('div.public-DraftEditor-content[contenteditable="true"]')) {
+    return 'ready';
+  }
+  if (isYoastErrorState()) {
+    return 'error';
+  }
+  return 'timeout';
+}
+
+function isYoastErrorState() {
+  // Yoast prints this in its metabox / sidebar when its React render fails.
+  return /Something went wrong\.?\s*Please reload the page/i.test(document.body.innerText || '');
+}
+
+// Waits until the WP post page has its critical editors mounted, so the
+// field polls inside fillPost (Yoast Draft.js, TinyMCE) don't race ahead.
+// Caps at ~10 seconds — if either editor hasn't mounted by then, fillPost
+// will still proceed and the per-field polls inside it will keep trying.
+async function waitForPageSettled() {
+  await waitFor(() => document.getElementById('title'), { timeout: 15000 }).catch(() => null);
+  const yoastReady = () => !!document.querySelector('div.public-DraftEditor-content[contenteditable="true"]');
+  const tinymceReady = () => !!(window.tinymce && window.tinymce.get && window.tinymce.get('content'));
+  await waitFor(() => yoastReady() || tinymceReady(), { timeout: 10000 }).catch(() => null);
+  await new Promise(r => setTimeout(r, 500));
+}
 
 // ---- Entry point 2: message-based (side panel flow) ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.type !== 'RRM_FILL_POST' || !msg.payload) return;
+  if (!msg || msg.type !== 'RRM_BLOG_FILL_POST' || !msg.payload) return;
   fillPost(msg.payload).then((status) => {
     sendResponse({ ok: true, status });
   }).catch((err) => {
-    console.error('[RRM Helper] fillPost failed:', err);
+    console.error('[RRM Blog Helper] fillPost failed:', err);
     sendResponse({ ok: false, error: String(err) });
   });
   return true; // keep the message channel open for async response
@@ -44,24 +124,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // rules only render the youtube_id field once "Videos" is checked.
 // Content/TinyMCE is filled by writing the underlying textarea synchronously
 // (instant) and syncing the visual editor in the background (non-blocking).
-async function fillPost(p) {
-  // Default category path is just ["Videos"] for back-compat with niches that
-  // use a single top-level Videos category.
+async function fillPost(p, opts = {}) {
+  // Default category path is just ["Blogs"] for back-compat with topics that
+  // use a single top-level Blogs category.
   const categories = (Array.isArray(p.categories) && p.categories.length)
     ? p.categories
-    : ['Videos'];
+    : ['Blogs'];
   const categoryStepLabel = categories.length > 1
     ? `Categories: ${categories.join(' → ')}`
     : `${categories[0]} category`;
 
-  const ui = createProgressUI('RRM Helper — Filling post…');
+  const ui = createProgressUI('RRM Blog Helper — Filling post…');
+  // Optional first step: wait for the editor + Yoast + TinyMCE to mount.
+  // Used by the storage-based (new-tab) entry point. The side-panel entry
+  // doesn't need it because the user only clicks Fill once the page looks
+  // settled, but the new-tab flow runs at document_idle while editors are
+  // still booting.
+  if (opts.waitForPage) ui.addStep('loading', 'Waiting for editor');
   ui.addStep('title', 'Title');
-  if (p.publishDate) ui.addStep('date',    `Publish: ${formatPublishLabel(p.publishDate)}`);
-  if (p.content)     ui.addStep('content', 'Content');
-  if (p.author)      ui.addStep('author',  'Author');
-  if (p.metaDesc)    ui.addStep('meta',    'Meta description (Yoast)');
+  if (p.publishDate)     ui.addStep('date',     `Publish: ${formatPublishLabel(p.publishDate)}`);
+  if (p.author)          ui.addStep('author',   'Author');
+  if (p.seoTitle)        ui.addStep('seoTitle', 'SEO title (Yoast)');
+  if (p.metaDesc)        ui.addStep('meta',     'Meta description (Yoast)');
   ui.addStep('category', categoryStepLabel);
-  if (p.ytId)        ui.addStep('acf',     'YouTube ID (ACF)');
+  if (p.primaryCategory) ui.addStep('primary',  `Primary category: ${p.primaryCategory}`);
+  if (p.content)         ui.addStep('content',  'Content');
+  // No ACF YouTube ID step — blog posts don't have that field gate.
+
+  // 0. Wait for page to settle (only when entry point requested it).
+  if (opts.waitForPage) {
+    ui.update('loading', 'running', 'page is still loading');
+    await waitForPageSettled();
+    ui.update('loading', 'done');
+  }
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -90,12 +185,68 @@ async function fillPost(p) {
       dateOk ? null : 'date controls not found');
   }
 
-  // 1c. Content — write the underlying #content textarea NOW (instant). If
+  // 2. Author (waits for dropdown if enabled in Screen Options)
+  let authorResult = { ok: false, reason: 'skipped' };
+  if (p.author) {
+    ui.update('author', 'running', 'waiting for dropdown');
+    authorResult = await setAuthor(p.author);
+    if (authorResult.ok) {
+      ui.update('author', 'done', authorResult.partial ? 'partial match' : null);
+    } else if (authorResult.reason === 'no-dropdown') {
+      ui.update('author', 'failed', 'enable Author in Screen Options');
+    } else {
+      ui.update('author', 'failed', `"${p.author}" not in list — see console`);
+    }
+  }
+
+  // 3a. Yoast SEO Title (Draft.js, same pattern as meta description)
+  let seoTitleFilled = false;
+  if (p.seoTitle) {
+    ui.update('seoTitle', 'running', 'waiting for Yoast');
+    seoTitleFilled = await fillYoastSeoTitle(p.seoTitle);
+    ui.update('seoTitle', seoTitleFilled ? 'done' : 'failed',
+      seoTitleFilled ? null : 'field not found');
+  }
+
+  // 3b. Yoast SEO meta description (Draft.js, mounts async)
+  let yoastFilled = false;
+  if (p.metaDesc) {
+    ui.update('meta', 'running', 'waiting for Yoast');
+    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
+    ui.update('meta', yoastFilled ? 'done' : 'failed',
+      yoastFilled ? null : 'field not found');
+  }
+
+  // 4. Categories — instant click, no ACF wait. Blog posts don't have any
+  // ACF location rule gated on the Blogs category, so we skip the ACF
+  // readiness wait and the re-toggle retry that the video flow needs.
+  ui.update('category', 'running');
+  const catResult = fillCategoryPath(categories);
+  if (catResult.failed.length === 0) {
+    ui.update('category', 'done',
+      categories.length > 1 ? `${categories.join(' → ')} ✓` : null);
+  } else {
+    ui.update('category', 'failed',
+      `failed at "${catResult.failed[0]}"${catResult.checked.length ? ` (got: ${catResult.checked.join(' → ')})` : ''}`);
+  }
+
+  // 4b. Yoast Primary Category — click "Make Primary" for the named category.
+  // The Make Primary link is injected by Yoast next to checked categories;
+  // it appears after the category click, sometimes with a small delay.
+  if (p.primaryCategory) {
+    ui.update('primary', 'running', 'waiting for Yoast link');
+    const primaryOk = await setPrimaryCategory(p.primaryCategory);
+    ui.update('primary', primaryOk ? 'done' : 'failed',
+      primaryOk ? null : 'Make Primary link not found');
+  }
+
+  // 5. Content — LAST step. Write the underlying #content textarea NOW. If
   // TinyMCE is already mounted (common when content-wp.js runs late on a
   // fast page), also setContent synchronously so its iframe state matches
   // our textarea write — otherwise a later TinyMCE.save() could overwrite
   // the textarea with TinyMCE's empty state and wipe our content.
-  // Also kick off a background sync for the case where TinyMCE mounts later.
+  // We save the html in `contentHtmlForReinforcement` and the reinforcement
+  // loop fires immediately after fillPost returns.
   let contentHtmlForReinforcement = null;
   if (p.content) {
     ui.update('content', 'running');
@@ -104,7 +255,7 @@ async function fillPost(p) {
     const ta = document.getElementById('content');
     if (ta) {
       setNativeValue(ta, html);
-      // Sync TinyMCE NOW if already mounted (one-shot, no loop — safe for ACF).
+      // Sync TinyMCE NOW if already mounted (one-shot, no loop).
       if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
         try {
           const ed = window.tinymce.get('content');
@@ -120,80 +271,23 @@ async function fillPost(p) {
     }
   }
 
-  // 2. Author (waits for dropdown if enabled in Screen Options)
-  let authorResult = { ok: false, reason: 'skipped' };
-  if (p.author) {
-    ui.update('author', 'running', 'waiting for dropdown');
-    authorResult = await setAuthor(p.author);
-    if (authorResult.ok) {
-      ui.update('author', 'done', authorResult.partial ? 'partial match' : null);
-    } else if (authorResult.reason === 'no-dropdown') {
-      ui.update('author', 'failed', 'enable Author in Screen Options');
-    } else {
-      ui.update('author', 'failed', `"${p.author}" not in list — see console`);
-    }
-  }
-
-  // 3. Yoast SEO meta description (Draft.js, mounts async)
-  let yoastFilled = false;
-  if (p.metaDesc) {
-    ui.update('meta', 'running', 'waiting for Yoast');
-    yoastFilled = await fillYoastMetaDesc(p.metaDesc);
-    ui.update('meta', yoastFilled ? 'done' : 'failed',
-      yoastFilled ? null : 'field not found');
-  }
-
-  // 4. Categories — supports a single top-level name OR a parent→child path.
-  // Running AFTER author + meta gives ACF more time to fully initialize.
-  ui.update('category', 'running', 'waiting for ACF');
-  await waitForAcfReady(5000);
-  const catResult = fillCategoryPath(categories);
-  if (catResult.failed.length === 0) {
-    ui.update('category', 'done',
-      categories.length > 1 ? `${categories.join(' → ')} ✓` : null);
-  } else {
-    ui.update('category', 'failed',
-      `failed at "${catResult.failed[0]}"${catResult.checked.length ? ` (got: ${catResult.checked.join(' → ')})` : ''}`);
-  }
-
-  // 5. ACF YouTube ID (waits for ACF to render after category click)
-  let acfFilled = false;
-  if (p.ytId) {
-    ui.update('acf', 'running', 'waiting for ACF field');
-    acfFilled = await fillAcfYoutubeId(p.ytId);
-
-    // If the field didn't appear, ACF may have missed our category click.
-    // Re-toggle the same checkboxes (uncheck + re-check) to fire fresh
-    // change events that any late-bound listener will catch, then retry.
-    if (!acfFilled && catResult.checkboxes.length > 0) {
-      ui.update('acf', 'running', 'retrying via category re-toggle');
-      await retoggleCategories(catResult.checkboxes);
-      acfFilled = await fillAcfYoutubeId(p.ytId);
-    }
-
-    ui.update('acf', acfFilled ? 'done' : 'failed',
-      acfFilled ? null : 'ACF field did not appear');
-  }
-
   const allOk = ui.allDone();
   ui.finish(allOk);
 
-  // After all critical steps are done (especially ACF), reinforce content in
-  // the background. This protects against late TinyMCE re-syncs or WP
-  // autosave that may wipe our textarea write. It runs strictly AFTER ACF
-  // evaluation completes, so it can't interfere with ACF's location-rule
-  // refresh (which was the reason we removed the original reinforcement loop).
+  // Reinforce content in the background to defeat WP autosave + TinyMCE
+  // re-saves that wipe our textarea write. Runs immediately after fillPost
+  // returns, with content as the last field set — minimizes the autosave
+  // window before reinforcement kicks in.
   if (contentHtmlForReinforcement) {
     reinforceContentInBackground(contentHtmlForReinforcement);
   }
 
-  return { yoastFilled, categoryResult: catResult, acfFilled, authorResult };
+  return { yoastFilled, categoryResult: catResult, authorResult };
 }
 
-// Delayed content reinforcement. Fired AFTER the main fill flow completes,
-// so re-applying TinyMCE.setContent can't interfere with ACF's location-rule
-// evaluation. Runs every ~1.5s for ~9 seconds total. Each iteration only
-// writes if the value drifted (cheap when no drift).
+// Delayed content reinforcement. Fired AFTER the main fill flow completes.
+// Re-applies the textarea value + TinyMCE setContent every ~1.5s for 9s total.
+// Each iteration only writes if the value drifted (cheap when no drift).
 async function reinforceContentInBackground(html) {
   for (let i = 0; i < 6; i++) {
     await new Promise(r => setTimeout(r, 1500));
@@ -335,6 +429,35 @@ function fillCategoryPath(path) {
   // Explicit ACF refresh in case the change events alone didn't trigger it.
   nudgeAcf();
   return { checked, failed, checkboxes };
+}
+
+// Marks one of the checked categories as Yoast SEO's "Primary Category".
+// Yoast injects a "Make Primary" link next to every CHECKED category in the
+// metabox. We find the li whose label matches the target category name and
+// click its Make Primary link/button. Polls briefly because Yoast injects
+// the link a moment after the category checkbox is ticked.
+async function setPrimaryCategory(name) {
+  if (!name) return false;
+  const want = String(name).trim().toLowerCase();
+  for (let attempt = 0; attempt < 25; attempt++) { // ~5 seconds
+    const allLis = document.querySelectorAll('#categorychecklist li');
+    for (const li of allLis) {
+      const label = li.querySelector(':scope > label');
+      if (!label) continue;
+      if (label.textContent.trim().toLowerCase() !== want) continue;
+      // Found the li. The Make Primary trigger sits as an immediate child of
+      // the li (sibling to the label). Yoast uses a few different class names
+      // across versions — try the known ones.
+      const triggers = li.querySelectorAll(':scope > .wpseo-make-primary-term, :scope > a.wpseo-make-primary-term, :scope > button.wpseo-make-primary-term, :scope > .wpseo-primary-category-trigger, :scope > a.wpseo-primary-category-trigger');
+      for (const t of triggers) {
+        try { t.click(); } catch {}
+        return true;
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] Yoast Make Primary link not found for category:', name);
+  return false;
 }
 
 // Re-toggle a list of category checkboxes (uncheck + re-check) with the
@@ -612,10 +735,9 @@ async function syncTinyMCEInBackground(html) {
 // which Draft.js intercepts and routes through its normal state updates.
 // Falls back to legacy textarea selectors for older Yoast versions.
 async function fillYoastMetaDesc(value) {
-  const draftSelectors = [
-    '#yoast-google-preview-description-metabox',                                       // Yoast 18+ Classic Editor metabox
-    '[id^="yoast-google-preview-description"]',                                        // any variant of the above id
-    'div.public-DraftEditor-content[aria-labelledby^="replacement-variable-editor-field"]' // generic Draft.js fallback
+  const idSelectors = [
+    '#yoast-google-preview-description-metabox',
+    '[id^="yoast-google-preview-description"]'
   ];
   const legacySelectors = [
     '#yoast_wpseo_metadesc',
@@ -623,16 +745,16 @@ async function fillYoastMetaDesc(value) {
     'textarea[name="yoast_wpseo_metadesc"]',
     'textarea[name="yoast_wpseo[metadesc]"]'
   ];
-
-  for (let i = 0; i < 30; i++) {
-    // Try Draft.js editor first
-    for (const sel of draftSelectors) {
+  for (let i = 0; i < 50; i++) { // ~10 seconds
+    // 1. Specific Yoast IDs (most common path — RRM@home / RRM / SCMM all use these)
+    for (const sel of idSelectors) {
       const el = document.querySelector(sel);
-      if (el && el.isContentEditable) {
-        return setDraftEditorText(el, value);
-      }
+      if (el && el.isContentEditable) return setDraftEditorText(el, value);
     }
-    // Older Yoast / fallback
+    // 2. Label-based finder (fallback for variant Yoast builds)
+    const editor = findYoastDraftEditor('meta description');
+    if (editor) return setDraftEditorText(editor, value);
+    // 3. Legacy textarea (older Yoast)
     for (const sel of legacySelectors) {
       const el = document.querySelector(sel);
       if (el) {
@@ -642,16 +764,152 @@ async function fillYoastMetaDesc(value) {
     }
     await new Promise(r => setTimeout(r, 200));
   }
-  console.warn('[RRM Helper] Yoast meta description editor not found.');
+  // Diagnostic dump — show what was on the page so we can fix the selector.
+  // Use console.error so it survives error-only console filters.
+  const allDraftEditors = [...document.querySelectorAll('div.public-DraftEditor-content[contenteditable="true"]')]
+    .map(e => ({
+      id: e.id || '(no id)',
+      ariaLabelledBy: e.getAttribute('aria-labelledby'),
+      labelText: e.getAttribute('aria-labelledby')
+        ? (document.getElementById(e.getAttribute('aria-labelledby'))?.textContent || '').trim()
+        : '(no label)'
+    }));
+  const allLabels = [...document.querySelectorAll('[class*="replacevar__label"], [class*="yst-replacevar__label"]')]
+    .map(l => ({ text: l.textContent.trim(), id: l.id }));
+  console.error('[RRM Blog Helper] Yoast meta description editor not found.\n' +
+    'Draft editors on page:', allDraftEditors, '\nReplacevar labels:', allLabels,
+    '\nYoast error visible:', isYoastErrorState());
   return false;
 }
 
-// Sets text inside a Draft.js contenteditable via execCommand, the only reliable
-// way to drive Draft.js's React state from outside.
+// Robust Yoast Draft.js field finder. Yoast's metabox structure (any version
+// since the Draft.js rewrite):
+//   <div class="...yst-replacevar...">
+//     <div class="...yst-replacevar__label" id="replacement-variable-editor-field-N">
+//       SEO title       ← match this text
+//     </div>
+//     ...
+//     <div class="public-DraftEditor-content"
+//          contenteditable="true"
+//          aria-labelledby="replacement-variable-editor-field-N">  ← matches by id
+//     </div>
+//   </div>
+//
+// Strategy:
+//   1. Find every label-like element by text match (case insensitive).
+//   2. For each match, look up the editor by aria-labelledby = label.id.
+//   3. If that doesn't resolve, walk ancestors to find a nearby Draft.js editor.
+function findYoastDraftEditor(labelText) {
+  const want = labelText.trim().toLowerCase();
+
+  // Helper — try exact-match first, then includes-match.
+  const isMatch = (text) => {
+    const t = text.trim().toLowerCase();
+    return t === want || t.includes(want);
+  };
+
+  // 1. Any label-like elements anywhere on the page
+  const labelCandidates = document.querySelectorAll(
+    '[class*="replacevar__label"], [class*="yst-replacevar__label"], label'
+  );
+  for (const lbl of labelCandidates) {
+    if (!isMatch(lbl.textContent)) continue;
+
+    // 1a. Editor referenced by aria-labelledby = this label's id
+    const lblId = lbl.id;
+    if (lblId) {
+      try {
+        const editor = document.querySelector(
+          `div.public-DraftEditor-content[aria-labelledby="${CSS.escape(lblId)}"]`
+        );
+        if (editor && editor.isContentEditable) return editor;
+      } catch {}
+    }
+
+    // 1b. Editor inside the same ancestor wrapper
+    let cur = lbl.parentElement;
+    for (let depth = 0; depth < 6 && cur; depth++) {
+      const editor = cur.querySelector(
+        'div.public-DraftEditor-content[contenteditable="true"]'
+      );
+      if (editor) return editor;
+      cur = cur.parentElement;
+    }
+  }
+
+  // 2. Reverse lookup — walk every Draft.js editor on the page and pick the
+  // one whose aria-labelledby resolves to a label matching our text.
+  const editors = [...document.querySelectorAll(
+    'div.public-DraftEditor-content[contenteditable="true"]'
+  )];
+  for (const editor of editors) {
+    const labelledById = editor.getAttribute('aria-labelledby');
+    if (!labelledById) continue;
+    const labelEl = document.getElementById(labelledById);
+    if (labelEl && isMatch(labelEl.textContent)) {
+      return editor;
+    }
+  }
+
+  // 3. Position-based fallback — Yoast's metabox typically renders editors
+  // in a known order. SEO Title is usually the 1st draft editor on the page;
+  // Meta Description is usually the 2nd. If we couldn't match by label, use
+  // that convention so we at least try to fill SOMETHING rather than nothing.
+  if (want === 'seo title' && editors.length >= 1) return editors[0];
+  if (want === 'meta description' && editors.length >= 2) return editors[1];
+
+  return null;
+}
+
+// Fills Yoast SEO Title. Mirrors fillYoastMetaDesc — Yoast 18+ renders the
+// SEO Title field as a Draft.js contenteditable too, so the only reliable
+// way to populate it is to focus + select-all + execCommand('insertText').
+async function fillYoastSeoTitle(value) {
+  const idSelectors = [
+    '#yoast-google-preview-title-metabox',
+    '[id^="yoast-google-preview-title"]'
+  ];
+  const legacySelectors = [
+    '#yoast_wpseo_title',
+    'input#yoast_wpseo_title',
+    'input[name="yoast_wpseo_title"]'
+  ];
+  for (let i = 0; i < 50; i++) { // ~10 seconds
+    // 1. Specific Yoast IDs
+    for (const sel of idSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.isContentEditable) return setDraftEditorText(el, value);
+    }
+    // 2. Label-based finder (fallback)
+    const editor = findYoastDraftEditor('seo title');
+    if (editor) return setDraftEditorText(editor, value);
+    // 3. Legacy input
+    for (const sel of legacySelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        setNativeValue(el, value);
+        return true;
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.warn('[RRM Helper] Yoast SEO title editor not found.');
+  return false;
+}
+
+// Sets text inside a Draft.js contenteditable via execCommand. This is the
+// only reliable way to drive Draft.js's React state from outside.
+//
+// Known limitation: Yoast's SEO Title field comes pre-populated with three
+// replacement-variable entities ("Page", "Separator", "Site title"). Our
+// insertText call inserts BEFORE those chips rather than replacing them, so
+// they remain in the field. We tried clearing them with execCommand('delete')
+// — that breaks Draft.js's React reconciliation and causes cascading
+// "removeChild" errors that also kill the Meta Description fill. So for now
+// chips stay; user removes them with two backspaces manually.
 function setDraftEditorText(editorEl, value) {
   try {
     editorEl.focus();
-    // Select all current content (placeholder or otherwise) so insertText replaces it.
     const range = document.createRange();
     range.selectNodeContents(editorEl);
     const sel = window.getSelection();
@@ -659,7 +917,6 @@ function setDraftEditorText(editorEl, value) {
     sel.addRange(range);
     const ok = document.execCommand('insertText', false, value);
     if (!ok) {
-      // Last-ditch fallback: dispatch beforeinput manually
       editorEl.dispatchEvent(new InputEvent('beforeinput', {
         bubbles: true, cancelable: true, inputType: 'insertText', data: value
       }));
@@ -669,7 +926,7 @@ function setDraftEditorText(editorEl, value) {
     }
     return true;
   } catch (e) {
-    console.error('[RRM Helper] Failed to set Yoast meta description:', e);
+    console.error('[RRM Blog Helper] Failed to set Draft.js editor:', e);
     return false;
   }
 }

@@ -222,151 +222,26 @@
     margin-right: 6px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Mode tabs */
-  .mode-tabs {
-    display: flex;
-    gap: 4px;
-    margin: 0 0 14px;
-    background: #181b22;
-    border: 1px solid #262a33;
-    border-radius: 6px;
-    padding: 3px;
-  }
-  .mode-tabs button {
-    flex: 1;
-    margin: 0;
-    background: transparent;
-    color: #8a93a3;
-    font-weight: 500;
-    padding: 6px 10px;
-    font-size: 11px;
-    border-radius: 4px;
-  }
-  .mode-tabs button:hover { background: #1f242d; color: #e6e6e6; }
-  .mode-tabs button.active {
-    background: #5b8def;
-    color: white;
-  }
-  .mode-tabs button.active:hover { background: #4a7ce0; }
-  .mode-pane { display: none; }
-  .mode-pane.active { display: block; }
-
-  /* Blog mode — dropzone */
-  .dropzone {
-    border: 2px dashed #2a2f3a;
-    border-radius: 8px;
-    padding: 20px 14px;
-    text-align: center;
-    background: #181b22;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
-    margin-bottom: 10px;
-  }
-  .dropzone:hover { border-color: #5b8def; background: #1c2230; }
-  .dropzone.drag { border-color: #5b8def; background: #1c2230; }
-  .dropzone .big { font-size: 12px; color: #e6e6e6; margin-bottom: 4px; }
-  .dropzone .small { font-size: 10px; color: #8a93a3; }
-  .dropzone input[type=file] { display: none; }
-  .dropzone .pick {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 5px 10px;
-    background: #5b8def;
-    color: white;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .topic-row {
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 10px;
-  }
-  .topic-row label { color: #8a93a3; font-size: 11px; flex-shrink: 0; }
-  .topic-row select {
-    flex: 1;
-    background: #0f1115;
-    border: 1px solid #2a2f3a;
-    color: #e6e6e6;
-    padding: 6px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .topic-row select:focus { outline: none; border-color: #5b8def; }
-  .blog-card .field {
-    background: #0f1115;
-    border: 1px solid #2a2f3a;
-    border-radius: 4px;
-    margin-bottom: 6px;
-    padding: 5px 7px;
-    font-size: 10px;
-  }
-  .blog-card .field .label {
-    color: #8a93a3;
-    margin-bottom: 2px;
-    text-transform: uppercase;
-    font-size: 9px;
-    letter-spacing: 0.4px;
-  }
-  .blog-card .field .value {
-    color: #e6e6e6;
-    word-break: break-word;
-  }
 </style>
 </head>
 <body>
 
-<h1>RRM WP Helper <span class="scope" id="modeScope">—</span></h1>
-<p class="subtitle" id="modeSubtitle">Pick a mode below.</p>
+<h1>RRM WP Helper <span class="scope" id="nicheScope">—</span></h1>
+<p class="subtitle">Paste the email, pick the niche, then click <strong>Fill This Post</strong> on the active New Post page.</p>
 
-<div class="mode-tabs">
-  <button id="modeVideoBtn" class="active">Video Posts</button>
-  <button id="modeBlogBtn">Blog Posts</button>
+<div class="niche-row">
+  <label for="nicheSelect">Niche:</label>
+  <select id="nicheSelect"></select>
 </div>
 
-<!-- VIDEO POSTS MODE (existing flow) -->
-<div id="videoMode" class="mode-pane active">
-  <div class="niche-row">
-    <label for="nicheSelect">Niche:</label>
-    <select id="nicheSelect"></select>
-  </div>
+<div id="tabStatus" class="status-line">Checking active tab…</div>
 
-  <div id="tabStatus" class="status-line">Checking active tab…</div>
+<textarea id="bulk" placeholder="Paste the full task email here. Only the selected niche's videos will appear."></textarea>
+<button id="extractBtn">Extract</button>
+<div id="bulkErr" class="err"></div>
 
-  <textarea id="bulk" placeholder="Paste the full task email here. Only the selected niche's videos will appear."></textarea>
-  <button id="extractBtn">Extract</button>
-  <div id="bulkErr" class="err"></div>
+<div id="results"></div>
 
-  <div id="results"></div>
-</div>
-
-<!-- BLOG POSTS MODE (new flow — ZIP of .docx files) -->
-<div id="blogMode" class="mode-pane">
-  <div class="topic-row">
-    <label for="blogSiteSelect">Site:</label>
-    <select id="blogSiteSelect"></select>
-  </div>
-  <div class="topic-row">
-    <label for="blogTopicSelect">Topic:</label>
-    <select id="blogTopicSelect"></select>
-  </div>
-
-  <div id="blogTabStatus" class="status-line">Checking active tab…</div>
-
-  <label class="dropzone" id="blogDrop">
-    <div class="big">Drop the monthly ZIP here</div>
-    <div class="small">or click to pick a file</div>
-    <div class="pick">Choose ZIP</div>
-    <input type="file" id="blogFile" accept=".zip">
-  </label>
-  <div id="blogErr" class="err"></div>
-
-  <div id="blogResults"></div>
-</div>
-
-<script src="vendor/jszip.min.js"></script>
-<script src="vendor/mammoth.browser.min.js"></script>
 <script src="sidepanel.js"></script>
 
 </body>

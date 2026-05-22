@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RRM Blog Helper</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #0f1115;
+    color: #e6e6e6;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 14px;
+  }
+  h1 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scope {
+    font-size: 10px;
+    background: #2a2f3a;
+    color: #6cd17b;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .subtitle {
+    color: #8a93a3;
+    font-size: 11px;
+    margin: 0 0 14px;
+  }
+  .status-line {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #8a93a3;
+  }
+  .status-line.ok { border-color: #2d7a3e; color: #6cd17b; }
+  .status-line.warn { border-color: #c08a3e; color: #ffb04d; }
+  button {
+    background: #5b8def;
+    color: white;
+    border: 0;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+  }
+  button:hover { background: #4a7ce0; }
+  button:disabled {
+    background: #2a2f3a;
+    color: #6a7180;
+    cursor: not-allowed;
+  }
+  button.fill-btn { background: #6cd17b; color: #0f1115; }
+  button.fill-btn:hover { background: #58c168; }
+  button.fill-btn.busy { background: #4a4a4a; color: #e6e6e6; cursor: progress; }
+  .err { color: #ff7676; font-size: 11px; margin-top: 6px; }
+
+  .topic-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .topic-row label { color: #8a93a3; font-size: 11px; flex-shrink: 0; }
+  .topic-row select {
+    flex: 1;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    color: #e6e6e6;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .topic-row select:focus { outline: none; border-color: #6cd17b; }
+
+  .dropzone {
+    border: 2px dashed #2a2f3a;
+    border-radius: 8px;
+    padding: 20px 14px;
+    text-align: center;
+    background: #181b22;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    margin-bottom: 10px;
+  }
+  .dropzone:hover { border-color: #6cd17b; background: #1c2230; }
+  .dropzone.drag { border-color: #6cd17b; background: #1c2230; }
+  .dropzone .big { font-size: 12px; color: #e6e6e6; margin-bottom: 4px; }
+  .dropzone .small { font-size: 10px; color: #8a93a3; }
+  .dropzone input[type=file] { display: none; }
+  .dropzone .pick {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 5px 10px;
+    background: #6cd17b;
+    color: #0f1115;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .card {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .card .title {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    word-break: break-word;
+  }
+  .card .meta {
+    font-size: 10px;
+    color: #8a93a3;
+    margin-bottom: 8px;
+  }
+  .field {
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    padding: 5px 7px;
+    font-size: 10px;
+  }
+  .field .label {
+    color: #8a93a3;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.4px;
+  }
+  .field .value {
+    color: #e6e6e6;
+    word-break: break-word;
+  }
+  .empty {
+    text-align: center;
+    color: #8a93a3;
+    font-size: 11px;
+    padding: 20px 0;
+  }
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid rgba(0,0,0,0.3);
+    border-top-color: #0f1115;
+    border-radius: 50%;
+    animation: spin .9s linear infinite;
+    vertical-align: -1px;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>RRM Blog Helper <span class="scope" id="siteScope">—</span></h1>
+<p class="subtitle">Pick a site + topic, drop a <strong>.docx</strong>, then click Fill on the active New Post page.</p>
+
+<div class="topic-row">
+  <label for="siteSelect">Site:</label>
+  <select id="siteSelect"></select>
+</div>
+<div class="topic-row">
+  <label for="topicSelect">Topic:</label>
+  <select id="topicSelect"></select>
+</div>
+
+<div id="tabStatus" class="status-line">Checking active tab…</div>
+
+<label class="dropzone" id="drop">
+  <div class="big">Drop a Word doc here</div>
+  <div class="small">or click to pick a .docx</div>
+  <div class="pick">Choose .docx</div>
+  <input type="file" id="file" accept=".docx">
+</label>
+<div id="errMsg" class="err"></div>
+
+<div id="results"></div>
+
+<script src="vendor/mammoth.browser.min.js"></script>
+<script src="sidepanel.js"></script>
+
+</body>
+</html>
