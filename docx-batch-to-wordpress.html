@@ -558,9 +558,10 @@ const SITES = [
     target: "rrmathome",
     aliases: ["rrmathome", "rrm@home", "rrm at home", "rrmhome"],
     topics: [
-      { id: "flooring", name: "Flooring",          category: "Flooring > Blogs", categoryPath: ["Flooring", "Blogs"], primaryCategory: null },
-      { id: "hvac",     name: "HVAC",              category: "HVAC > Blogs",     categoryPath: ["HVAC",     "Blogs"], primaryCategory: null },
-      { id: "windows",  name: "Windows and Doors", category: "Blogs",            categoryPath: ["Blogs"],              primaryCategory: null }
+      // All RRM@home blog posts use just the top-level "Blogs" category.
+      { id: "flooring", name: "Flooring",          category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null },
+      { id: "hvac",     name: "HVAC",              category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null },
+      { id: "windows",  name: "Windows and Doors", category: "Blogs", categoryPath: ["Blogs"], primaryCategory: null }
     ]
   },
   {

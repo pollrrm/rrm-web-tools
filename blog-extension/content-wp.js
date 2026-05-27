@@ -240,32 +240,49 @@ async function fillPost(p, opts = {}) {
       primaryOk ? null : 'Make Primary link not found');
   }
 
-  // 5. Content — LAST step. Write the underlying #content textarea NOW. If
-  // TinyMCE is already mounted (common when content-wp.js runs late on a
-  // fast page), also setContent synchronously so its iframe state matches
-  // our textarea write — otherwise a later TinyMCE.save() could overwrite
-  // the textarea with TinyMCE's empty state and wipe our content.
-  // We save the html in `contentHtmlForReinforcement` and the reinforcement
-  // loop fires immediately after fillPost returns.
-  let contentHtmlForReinforcement = null;
+  // 5. Content — LAST step. The reliable approach for Classic Editor:
+  //   1. If editor is in Visual mode, switch to Text/Code mode first. In
+  //      Text mode, the #content textarea is the live editor surface and
+  //      TinyMCE's iframe is detached, so our write can't be wiped by a
+  //      TinyMCE.save() running on empty editor state.
+  //   2. Write the textarea.
+  //   3. Switch back to Visual mode — WordPress's switchEditors triggers
+  //      TinyMCE to read the textarea into its iframe, so the visual editor
+  //      now reflects our content.
+  // This mimics what a user would do (toggle Text → paste → toggle back to
+  // Visual) and is the path that's most compatible with Yoast / WPBakery /
+  // any plugin that hooks editor events.
   if (p.content) {
     ui.update('content', 'running');
     const html = toHtml(p.content);
-    contentHtmlForReinforcement = html;
     const ta = document.getElementById('content');
     if (ta) {
-      setNativeValue(ta, html);
-      // Sync TinyMCE NOW if already mounted (one-shot, no loop).
-      if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
-        try {
-          const ed = window.tinymce.get('content');
-          ed.setContent(html);
-          ed.save();
-        } catch {/* mid-mount race — background sync covers us */}
+      const wrap = document.getElementById('wp-content-wrap');
+      const wasVisual = wrap && wrap.classList.contains('tmce-active');
+      const canSwitch = !!(window.switchEditors && window.switchEditors.go);
+
+      // Step 1: switch to Text mode if needed.
+      if (wasVisual && canSwitch) {
+        try { window.switchEditors.go('content', 'html'); } catch {}
+        await new Promise(r => setTimeout(r, 250));
       }
-      // Background fallback for TinyMCE mounting later.
-      syncTinyMCEInBackground(html); // fire-and-forget
-      ui.update('content', 'done', 'visual editor syncs in background');
+
+      // Step 2: write textarea (now the active editor surface in Text mode).
+      setNativeValue(ta, html);
+
+      // Step 3: switch back to Visual if that's where user was. WP's
+      // switchEditors will call TinyMCE.init which reads the textarea.
+      if (wasVisual && canSwitch) {
+        await new Promise(r => setTimeout(r, 150));
+        try { window.switchEditors.go('content', 'tmce'); } catch {}
+      } else if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
+        // Already in Text mode (or no switchEditors available) — make TinyMCE
+        // pick up the textarea via load() so it stays in sync.
+        try { window.tinymce.get('content').load(); } catch {}
+      }
+
+      ui.update('content', 'done',
+        wasVisual ? 'toggled Text → Visual to load' : null);
     } else {
       ui.update('content', 'failed', '#content textarea not found');
     }
@@ -274,33 +291,39 @@ async function fillPost(p, opts = {}) {
   const allOk = ui.allDone();
   ui.finish(allOk);
 
-  // Reinforce content in the background to defeat WP autosave + TinyMCE
-  // re-saves that wipe our textarea write. Runs immediately after fillPost
-  // returns, with content as the last field set — minimizes the autosave
-  // window before reinforcement kicks in.
-  if (contentHtmlForReinforcement) {
-    reinforceContentInBackground(contentHtmlForReinforcement);
-  }
-
   return { yoastFilled, categoryResult: catResult, authorResult };
 }
 
 // Delayed content reinforcement. Fired AFTER the main fill flow completes.
 // Re-applies the textarea value + TinyMCE setContent every ~1.5s for 9s total.
 // Each iteration only writes if the value drifted (cheap when no drift).
+//
+// Two important defenses:
+//   1. Only call ed.save() if setContent actually took. Otherwise save()
+//      would sync the editor's CURRENT (possibly empty) content back to the
+//      textarea, wiping our work.
+//   2. Write the textarea LAST in each iteration, so even if TinyMCE.save()
+//      misbehaves the textarea ends up holding the authoritative value.
 async function reinforceContentInBackground(html) {
   for (let i = 0; i < 6; i++) {
     await new Promise(r => setTimeout(r, 1500));
     try {
-      const ta = document.getElementById('content');
-      if (ta && ta.value !== html) setNativeValue(ta, html);
+      // 1. Update TinyMCE first if mounted
       if (window.tinymce && window.tinymce.get) {
         const ed = window.tinymce.get('content');
         if (ed && ed.getContent && ed.getContent() !== html) {
           ed.setContent(html);
-          ed.save();
+          if (ed.getContent() === html) {
+            ed.save();
+          } else {
+            console.warn('[RRM Blog Helper] TinyMCE reinforcement setContent did not take.');
+          }
         }
       }
+      // 2. ALWAYS write textarea last to ensure it has correct content,
+      //    overriding any save() that may have synced an empty editor.
+      const ta = document.getElementById('content');
+      if (ta && ta.value !== html) setNativeValue(ta, html);
     } catch {/* ignore */}
   }
 }
@@ -709,19 +732,28 @@ function toHtml(text) {
 // Best-effort TinyMCE sync, in the background. Other fill steps don't await
 // this so they aren't blocked by the slow iframe boot.
 //
-// We deliberately do NOT run a reinforcement loop here — repeated setContent
-// calls during ACF's location-rule evaluation can interfere with ACF's
-// field-group rendering. The synchronous textarea write at the call site is
-// the source of truth for Save; this background sync is only for the Visual
-// editor preview, and one pass is enough on a fresh post.
+// Critical correctness: we only call ed.save() AFTER verifying setContent
+// actually took. Otherwise, if setContent silently failed (mid-init,
+// plugin interference, content validation), save() would sync the EMPTY
+// editor back to the textarea, wiping our textarea write. As a final
+// safety net, after the TinyMCE attempt we re-assert the textarea value
+// so it remains the authoritative copy if TinyMCE save() did something
+// unexpected.
 async function syncTinyMCEInBackground(html) {
   for (let i = 0; i < 60; i++) { // up to ~12 seconds waiting for mount
     if (window.tinymce && window.tinymce.get && window.tinymce.get('content')) {
       try {
         const ed = window.tinymce.get('content');
         ed.setContent(html);
-        ed.save();
+        if (ed.getContent && ed.getContent() === html) {
+          ed.save();
+        } else {
+          console.warn('[RRM Blog Helper] TinyMCE setContent did not take; skipping save() to avoid wiping textarea.');
+        }
       } catch {/* mid-mount race — ignore */}
+      // Always re-assert the textarea last as the source of truth.
+      const ta = document.getElementById('content');
+      if (ta && ta.value !== html) setNativeValue(ta, html);
       return;
     }
     await new Promise(r => setTimeout(r, 200));
