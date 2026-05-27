@@ -231,9 +231,11 @@ function parseDocxHtml(html, filename) {
   for (let i = bodyStart; i < blocks.length; i++) {
     const text = plainText(blocks[i]);
     if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) bodyEnd = i;
-    const seoMatch = text.match(/^SEO Title Tag:\s*(.+)$/i);
+    // Accept "SEO Title:" or "SEO Title Tag:" — the content team uses both
+    // labels interchangeably across documents.
+    const seoMatch = text.match(/^SEO\s+Title(?:\s+Tag)?:\s*(.+)$/i);
     if (seoMatch) seoTitle = seoMatch[1].trim();
-    const metaMatch = text.match(/^Meta Description:\s*(.+)$/i);
+    const metaMatch = text.match(/^Meta\s+Description:\s*(.+)$/i);
     if (metaMatch) metaDescription = metaMatch[1].trim();
     if (/^H Tags Used\b/i.test(text) && i + 1 < blocks.length) {
       const next = blocks[i + 1];
