@@ -249,6 +249,90 @@
   .stat.ok strong { color: var(--ok); }
   .stat.err strong { color: var(--error); }
 
+  /* ---- Summary / verdict panel ---- */
+  .summary { margin-bottom: 16px; }
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .verdict.ok { background: var(--add-bg); border-color: var(--add-border); }
+  .verdict.warn { background: rgba(245, 158, 11, .12); border-color: rgba(245, 158, 11, .5); }
+  .verdict.err { background: var(--rem-bg); border-color: var(--rem-border); }
+  .verdict-badge {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: 5px 10px;
+    border-radius: 5px;
+    background: var(--panel);
+    color: var(--text);
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .verdict.ok .verdict-badge { color: var(--ok); border-color: var(--add-border); }
+  .verdict.warn .verdict-badge { color: #b45309; border-color: rgba(245, 158, 11, .6); }
+  :root[data-theme="dark"] .verdict.warn .verdict-badge { color: #fbbf24; }
+  .verdict.err .verdict-badge { color: var(--error); border-color: var(--rem-border); }
+  .verdict-msg { font-size: 14px; color: var(--text); line-height: 1.45; flex: 1; min-width: 200px; }
+
+  .findings {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .finding {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 12px;
+    background: var(--panel-2);
+    border-radius: 6px;
+    border-left: 3px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .finding.err { border-left-color: var(--error); }
+  .finding.warn { border-left-color: #f59e0b; }
+  .finding.info { border-left-color: var(--accent); }
+  .finding.ok { border-left-color: var(--ok); }
+  .finding strong { color: var(--text); font-weight: 600; }
+  .finding-icon {
+    flex-shrink: 0;
+    font-weight: 700;
+    width: 14px;
+    text-align: center;
+    font-size: 14px;
+  }
+  .finding-icon.err { color: var(--error); }
+  .finding-icon.warn { color: #f59e0b; }
+  .finding-icon.info { color: var(--accent); }
+  .finding-icon.ok { color: var(--ok); }
+  .finding .example {
+    display: block;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: var(--input-bg);
+    border-radius: 4px;
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
   .diff-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -399,6 +483,7 @@
 </div>
 
 <div class="results" id="results">
+  <div class="summary" id="summary"></div>
   <div class="stats" id="stats"></div>
   <div class="diff-grid">
     <div class="diff-col" id="diff-source">
@@ -703,6 +788,241 @@
     return { ops, lcsLen: dp[n*W + m], aLen: n, bLen: m };
   }
 
+  // ----- Diff analysis (for intelligent summary) -----
+  function wordCountOf(text) {
+    return (text.match(/[\w'-]+/g) || []).length;
+  }
+  function joinTokens(tokens, indices) {
+    if (!indices.length) return '';
+    const lo = indices[0], hi = indices[indices.length - 1];
+    let s = '';
+    for (let k = lo; k <= hi; k++) s += tokens[k];
+    return s.trim();
+  }
+  function classifyBlock(text) {
+    const wc = wordCountOf(text);
+    const hasTerminal = /[.!?](\s|$)/.test(text);
+    if (wc === 0) return { kind: 'empty', wc };
+    if (wc === 1) return { kind: 'word', wc };
+    if (wc <= 4 && !hasTerminal) return { kind: 'phrase', wc };
+    if (hasTerminal || wc >= 8) return { kind: 'sentence', wc };
+    return { kind: 'phrase', wc };
+  }
+
+  // Walk ops; group adjacent rem/add runs into segments.
+  // A segment with both rem+add is a "change" (substitution);
+  // rem-only is "missing"; add-only is "extra".
+  function analyzeDiff(ops, aTok, bTok) {
+    const segments = [];
+    let cur = null;
+    for (const op of ops) {
+      if (op.op === 'eq') {
+        if (cur) { segments.push(cur); cur = null; }
+        continue;
+      }
+      if (!cur) cur = { remIdx: [], addIdx: [] };
+      if (op.op === 'rem') cur.remIdx.push(op.a);
+      else cur.addIdx.push(op.b);
+    }
+    if (cur) segments.push(cur);
+
+    const missing = [], extra = [], changes = [];
+    for (const seg of segments) {
+      const remText = joinTokens(aTok, seg.remIdx);
+      const addText = joinTokens(bTok, seg.addIdx);
+      const remCls = remText ? classifyBlock(remText) : null;
+      const addCls = addText ? classifyBlock(addText) : null;
+      if (remText && addText) {
+        changes.push({ from: remText, to: addText,
+                       fromKind: remCls.kind, toKind: addCls.kind,
+                       fromWc: remCls.wc, toWc: addCls.wc });
+      } else if (remText) {
+        missing.push({ text: remText, kind: remCls.kind, wc: remCls.wc });
+      } else if (addText) {
+        extra.push({ text: addText, kind: addCls.kind, wc: addCls.wc });
+      }
+    }
+
+    // Typographic substitutions: differences at 'eq' positions
+    // (matched in normalized form but not byte-identical).
+    const subs = { smartQuote: 0, smartApos: 0, dash: 0, ellipsis: 0, nbsp: 0, caseOnly: 0, other: 0 };
+    const typoNorm = s => s
+      .replace(/[‘’‚‛′]/g, "'")
+      .replace(/[“”„‟″]/g, '"')
+      .replace(/[–—−]/g, '-')
+      .replace(/…/g, '...')
+      .replace(/ /g, ' ');
+    for (const op of ops) {
+      if (op.op !== 'eq') continue;
+      const a = aTok[op.a], b = bTok[op.b];
+      if (a === b) continue;
+      if (a.toLowerCase() === b.toLowerCase()) { subs.caseOnly++; continue; }
+      if (typoNorm(a) === typoNorm(b)) {
+        if (/[“”„‟″]/.test(a + b)) subs.smartQuote++;
+        else if (/[‘’‚‛′]/.test(a + b)) subs.smartApos++;
+        else if (/[–—−]/.test(a + b)) subs.dash++;
+        else if (/…/.test(a + b)) subs.ellipsis++;
+        else if (/ /.test(a + b)) subs.nbsp++;
+        else subs.other++;
+      } else {
+        subs.other++;
+      }
+    }
+
+    return { missing, extra, changes, subs };
+  }
+
+  function truncate(text, max) {
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text;
+    return text.slice(0, max - 1).trimEnd() + '…';
+  }
+
+  function plural(n, sing, plur) { return n === 1 ? sing : (plur || sing + 's'); }
+
+  function buildSummary(analysis, aLen, bLen, lcsLen) {
+    const { missing, extra, changes, subs } = analysis;
+    const sim = (aLen + bLen === 0) ? 100 : Math.round((2 * lcsLen / (aLen + bLen)) * 100);
+
+    const missSent = missing.filter(m => m.kind === 'sentence');
+    const missPhr  = missing.filter(m => m.kind === 'phrase');
+    const missWord = missing.filter(m => m.kind === 'word');
+    const extraSent = extra.filter(e => e.kind === 'sentence');
+    const extraPhr  = extra.filter(e => e.kind === 'phrase');
+    const totalMissWords  = missing.reduce((s, m) => s + m.wc, 0);
+    const totalExtraWords = extra.reduce((s, e) => s + e.wc, 0);
+    const totalChanges    = changes.length;
+    const subTotal = Object.values(subs).reduce((s, v) => s + v, 0);
+
+    // ----- Verdict -----
+    let badge, kind, msg;
+    if (totalMissWords === 0 && totalExtraWords === 0 && totalChanges === 0) {
+      badge = 'Perfect Match'; kind = 'ok';
+      if (subTotal > 0) {
+        msg = 'Every word from the source appears on the page in the same order. The only differences are typographic (curly quotes, dashes, etc.) — normal WordPress auto-formatting.';
+      } else {
+        msg = 'The content on the page is identical to the source. Nothing missing, nothing extra. ✓';
+      }
+    } else if (missSent.length === 0 && missPhr.length === 0 && extraSent.length === 0
+               && totalMissWords <= 3 && totalChanges <= 2) {
+      badge = 'Near-Perfect Match'; kind = 'ok';
+      msg = 'The page matches the source with only minor word-level differences. Worth a glance, but no whole sentences or phrases are missing.';
+    } else if (missSent.length === 0 && sim >= 90) {
+      badge = 'Mostly Matches'; kind = 'warn';
+      msg = 'Most of the source content is on the page, but there are missing phrases or word changes worth reviewing below.';
+    } else if (sim >= 75) {
+      badge = 'Differences Found'; kind = 'warn';
+      msg = 'The page is missing notable content from the source. Review the highlights to see what needs to be fixed.';
+    } else {
+      badge = 'Major Differences'; kind = 'err';
+      msg = 'The page differs substantially from the source. Confirm you have the right URL and source file, or that the CSS selector is scoping to the right content area.';
+    }
+
+    let html = '<div class="verdict ' + kind + '">' +
+               '<div class="verdict-badge">' + badge + '</div>' +
+               '<div class="verdict-msg">' + msg + '</div>' +
+               '</div>';
+
+    // ----- Findings -----
+    const findings = [];
+
+    if (missSent.length > 0) {
+      findings.push({
+        kind: 'err', icon: '✗',
+        body: '<strong>' + missSent.length + ' full ' + plural(missSent.length, 'sentence') +
+              ' missing from the page.</strong> This is the most important thing to fix.' +
+              '<span class="example">' + escapeHTML(truncate(missSent[0].text, 160)) + '</span>'
+      });
+    }
+    if (missPhr.length > 0) {
+      findings.push({
+        kind: 'warn', icon: '⚠',
+        body: '<strong>' + missPhr.length + ' short ' + plural(missPhr.length, 'phrase') +
+              ' missing from the page</strong> (2–4 word groups). Could be a skipped clause or list item.' +
+              '<span class="example">' + escapeHTML(truncate(missPhr[0].text, 100)) +
+              (missPhr.length > 1 ? '  •  ' + escapeHTML(truncate(missPhr[1].text, 80)) : '') +
+              '</span>'
+      });
+    }
+    if (totalChanges > 0) {
+      const ex = changes[0];
+      findings.push({
+        kind: 'warn', icon: '⚠',
+        body: '<strong>' + totalChanges + ' word ' + plural(totalChanges, 'substitution') +
+              '</strong> — text on the page differs from the source (e.g. rephrasing, typo fixes, or unintended changes).' +
+              '<span class="example">"' + escapeHTML(truncate(ex.from, 60)) + '" → "' +
+              escapeHTML(truncate(ex.to, 60)) + '"</span>'
+      });
+    }
+    if (missWord.length > 0 && missSent.length === 0 && missPhr.length === 0) {
+      findings.push({
+        kind: 'info', icon: 'ℹ',
+        body: '<strong>' + missWord.length + ' single ' + plural(missWord.length, 'word') +
+              ' missing</strong> — likely minor wording tweaks rather than dropped content.'
+      });
+    }
+    if (extraSent.length > 0) {
+      findings.push({
+        kind: 'warn', icon: '⚠',
+        body: '<strong>' + extraSent.length + ' extra ' + plural(extraSent.length, 'sentence') +
+              ' on the page</strong> not in the source. This is usually either (a) navigation, sidebar, ' +
+              'or footer content that wasn\'t filtered out — try setting a CSS selector to scope ' +
+              'extraction — or (b) page content that was added directly on the site.' +
+              '<span class="example">' + escapeHTML(truncate(extraSent[0].text, 160)) + '</span>'
+      });
+    } else if (totalExtraWords > 30) {
+      findings.push({
+        kind: 'info', icon: 'ℹ',
+        body: '<strong>' + totalExtraWords + ' extra words on the page</strong> — most likely page chrome ' +
+              '(nav / sidebar / footer) that the auto-extractor missed. Try entering a CSS selector ' +
+              'like <code>.entry-content</code> or <code>article</code> to scope to just the main content.'
+      });
+    } else if (extraPhr.length > 0 && missSent.length === 0 && missPhr.length === 0) {
+      findings.push({
+        kind: 'info', icon: 'ℹ',
+        body: '<strong>' + extraPhr.length + ' small extra ' + plural(extraPhr.length, 'phrase') +
+              ' on the page</strong> — minor additions or wording differences.'
+      });
+    }
+
+    if (subTotal > 0) {
+      const parts = [];
+      if (subs.smartQuote) parts.push(subs.smartQuote + ' curly ' + plural(subs.smartQuote, 'quote'));
+      if (subs.smartApos)  parts.push(subs.smartApos + ' curly ' + plural(subs.smartApos, 'apostrophe'));
+      if (subs.dash)       parts.push(subs.dash + ' dash ' + plural(subs.dash, 'conversion'));
+      if (subs.ellipsis)   parts.push(subs.ellipsis + ' ' + plural(subs.ellipsis, 'ellipsis', 'ellipses'));
+      if (subs.nbsp)       parts.push(subs.nbsp + ' non-breaking ' + plural(subs.nbsp, 'space'));
+      if (subs.caseOnly)   parts.push(subs.caseOnly + ' case ' + plural(subs.caseOnly, 'difference'));
+      if (subs.other)      parts.push(subs.other + ' other');
+      if (parts.length) {
+        findings.push({
+          kind: 'info', icon: 'ℹ',
+          body: '<strong>Typographic differences:</strong> ' + parts.join(', ') +
+                '. These are normal WordPress auto-formatting and not real content changes.'
+        });
+      }
+    }
+
+    if (findings.length === 0 && kind === 'ok' && totalMissWords === 0 && totalExtraWords === 0 && totalChanges === 0) {
+      findings.push({
+        kind: 'ok', icon: '✓',
+        body: 'No issues detected.'
+      });
+    }
+
+    if (findings.length > 0) {
+      html += '<ul class="findings">';
+      for (const f of findings) {
+        html += '<li class="finding ' + f.kind + '">' +
+                '<span class="finding-icon ' + f.kind + '">' + f.icon + '</span>' +
+                '<span>' + f.body + '</span></li>';
+      }
+      html += '</ul>';
+    }
+
+    return html;
+  }
+
   // ----- Compare action -----
   $('btn-compare').addEventListener('click', runCompare);
   $('btn-clear').addEventListener('click', () => {
@@ -760,6 +1080,10 @@
     }
     diffSrcBody.innerHTML = srcHtml || '<em style="color:var(--text-dim)">(empty)</em>';
     diffPageBody.innerHTML = pageHtml || '<em style="color:var(--text-dim)">(empty)</em>';
+
+    // Intelligent summary (verdict + findings)
+    const analysis = analyzeDiff(ops, aTok, bTok);
+    $('summary').innerHTML = buildSummary(analysis, aLen, bLen, lcsLen);
 
     // Stats
     const missing = aLen - lcsLen;
