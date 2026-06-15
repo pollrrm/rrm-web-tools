@@ -243,7 +243,7 @@
 
 <a href="./index.html" class="back-link">← All Tools</a>
 <h1>SCMM Newsletter → WPBakery</h1>
-<p class="subtitle">Convert a Home Care Post / SCMM Unlayer email HTML, PDF, or pasted text into WPBakery shortcodes for the SCMM WordPress Code editor. Auto-detects layout (row width, background, white text) and groups multiple articles that share a column.</p>
+<p class="subtitle">For posting the Home Care Post Bulletin to seniorcaremarketingmax.com. Typical flow: <strong>parse the HTML for the layout</strong> (rows, columns, background, white text — multiple articles per column supported), then <strong>replace the text from the Word doc</strong> so the final copy and updated links go live. Outputs WPBakery shortcodes for the WordPress Code editor.</p>
 
 <div class="card">
   <h2>1. Source</h2>
@@ -291,6 +291,19 @@
   </div>
 </div>
 
+<div class="card">
+  <h2>1b. Replace text from Word doc <span style="text-transform:none; letter-spacing:0; color:var(--text-dim); font-weight:400;">(recommended — the doc has the final copy &amp; updated links)</span></h2>
+  <p class="hint" style="margin: 0 0 12px;">Parse the HTML above first to capture the layout, then drop the Word doc here. Each doc article (bold ~18pt heading) replaces the heading + body of the matching layout slot <strong>by title</strong> (the doc's article order can differ from the HTML's). The doc's hyperlinks come through, so stale links in the HTML get overwritten. The issue title and metadata block at the top of the doc are skipped automatically.</p>
+  <div class="drop-zone" id="docxDrop">
+    Drop a .docx file here, or click to browse.
+    <span class="file-name" id="docxFileName"></span>
+  </div>
+  <input type="file" id="docxFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
+  <div class="toolbar">
+    <span class="status" id="docxStatus">Awaiting file.</span>
+  </div>
+</div>
+
 <div class="card" id="articlesCard" style="display:none;">
   <h2>2. Articles &amp; Layout</h2>
   <details>
@@ -326,6 +339,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <!-- Theme toggle -->
 <script>
@@ -430,6 +444,27 @@
 
   function htmlEntities(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Links should never be bold — the site CSS already styles them, so <strong>/<b>
+  // around or inside a link is inconsistent. Strips bold only where it touches a link;
+  // bold words elsewhere are left alone. Applied to every body (HTML, doc, text).
+  function stripLinkBold(html) {
+    if (!html) return html;
+    // 1) Drop a <strong>/<b> wrapper that directly encloses a single link.
+    html = html.replace(/<(strong|b)>(\s*<a\b[^>]*>[\s\S]*?<\/a>\s*)<\/\1>/g, '$2');
+    // 2) Drop bold tags that sit inside the link text.
+    html = html.replace(/<a\b[^>]*>[\s\S]*?<\/a>/g, m => m.replace(/<\/?(strong|b)>/g, ''));
+    return html;
+  }
+
+  // w:t content is already XML-escaped (&amp; &lt; &gt;) = HTML escaping, so it passes
+  // through verbatim. Headings are decoded to match the HTML parser's textContent output.
+  function decodeEntities(s) {
+    return (s || '')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&');
   }
 
   // Convert a body subtree (Unlayer-style) into the plain WP textarea format.
@@ -542,7 +577,7 @@
       }
     }
     result = result.replace(/ /g, ' ');
-    return result.trim();
+    return stripLinkBold(result.trim());
   }
 
   function textOfHeading(h) {
@@ -664,6 +699,238 @@
         bg: '', whiteText: false,
       };
     });
+  }
+
+  // ----- Word doc (.docx) parsing -----
+  // Article headings are bold paragraphs at ~18pt (sz >= 28 half-points). Everything
+  // before the first heading (issue title + metadata) is skipped automatically.
+  function buildDocxRels(relsXml) {
+    const rels = {};
+    (relsXml.match(/<Relationship\b[^>]*\/?>/g) || []).forEach(r => {
+      const id = (r.match(/Id="([^"]+)"/) || [])[1];
+      const tgt = (r.match(/Target="([^"]+)"/) || [])[1];
+      const mode = (r.match(/TargetMode="([^"]+)"/) || [])[1];
+      if (id && tgt && mode === 'External') rels[id] = tgt; // keep &amp; as-is for href
+    });
+    return rels;
+  }
+
+  function buildNumberingMap(numXml) {
+    const map = {};
+    if (!numXml) return map;
+    const absFmt = {};
+    (numXml.match(/<w:abstractNum\b[\s\S]*?<\/w:abstractNum>/g) || []).forEach(an => {
+      const aid = (an.match(/w:abstractNumId="(\d+)"/) || [])[1];
+      const lvl0 = (an.match(/<w:lvl\b[^>]*w:ilvl="0"[\s\S]*?<\/w:lvl>/) || [''])[0];
+      const fmt = (lvl0.match(/<w:numFmt w:val="([^"]+)"/) || [])[1] || 'bullet';
+      if (aid != null) absFmt[aid] = fmt;
+    });
+    (numXml.match(/<w:num\b[\s\S]*?<\/w:num>/g) || []).forEach(n => {
+      const nid = (n.match(/w:numId="(\d+)"/) || [])[1];
+      const aid = (n.match(/<w:abstractNumId w:val="(\d+)"/) || [])[1];
+      if (nid != null) map[nid] = (absFmt[aid] || 'bullet') === 'bullet';
+    });
+    return map;
+  }
+
+  // Bold suppressed inside links (CSS styles them); bold outside links kept.
+  function docxRunToHtml(r, insideLink) {
+    const rpr = (r.match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [''])[0];
+    const bold = /<w:b\/>|<w:b /.test(rpr);
+    const ital = /<w:i\/>|<w:i /.test(rpr);
+    const inner = r.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, '');
+    let txt = '';
+    const partRe = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:br\s*\/>|<w:tab\s*\/>|<w:cr\s*\/>/g;
+    let pm;
+    while ((pm = partRe.exec(inner))) {
+      if (pm[0].indexOf('<w:br') === 0 || pm[0].indexOf('<w:cr') === 0) txt += '<br>';
+      else if (pm[0].indexOf('<w:tab') === 0) txt += ' ';
+      else txt += pm[1];
+    }
+    if (!txt) return '';
+    if (ital) txt = `<em>${txt}</em>`;
+    if (bold && !insideLink) txt = `<strong>${txt}</strong>`;
+    return txt;
+  }
+
+  function docxScopeToHtml(scope, rels, insideLink) {
+    let html = '';
+    const tokenRe = /<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>|<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+    let m;
+    while ((m = tokenRe.exec(scope))) {
+      const tok = m[0];
+      if (tok.indexOf('<w:hyperlink') === 0) {
+        const id = (tok.match(/r:id="([^"]+)"/) || [])[1];
+        const url = id && rels[id] ? rels[id] : '';
+        // Recurse over the hyperlink's INNER runs only, or it re-matches itself forever.
+        const innerScope = tok.replace(/^<w:hyperlink\b[^>]*>/, '').replace(/<\/w:hyperlink>$/, '');
+        const inner = docxScopeToHtml(innerScope, rels, true);
+        if (url) {
+          const href = url.replace(/"/g, '&quot;');
+          html += `<a href="${href}" target="_blank" rel="noopener">${inner}</a>`;
+        } else {
+          html += inner;
+        }
+      } else {
+        html += docxRunToHtml(tok, insideLink);
+      }
+    }
+    return html;
+  }
+
+  function parseDocxPara(p, rels, numIsBullet) {
+    const plain = (p.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || [])
+      .map(s => s.replace(/<[^>]*>/g, '')).join('').replace(/\s+/g, ' ').trim();
+    if (!plain) return null;
+    const runs = p.match(/<w:r\b[\s\S]*?<\/w:r>/g) || [];
+    let allBold = runs.length > 0, maxSz = 0;
+    for (const r of runs) {
+      const rpr = (r.match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [''])[0];
+      if (!/<w:b\/>|<w:b /.test(rpr)) allBold = false;
+      const sm = rpr.match(/<w:sz w:val="(\d+)"/);
+      if (sm) maxSz = Math.max(maxSz, +sm[1]);
+    }
+    if (allBold && maxSz >= 28) return { type: 'heading', text: decodeEntities(plain) };
+    const numPr = (p.match(/<w:numPr>[\s\S]*?<\/w:numPr>/) || [''])[0];
+    const inlineHtml = docxScopeToHtml(p, rels);
+    if (numPr) {
+      const numId = (numPr.match(/<w:numId w:val="(\d+)"/) || [])[1];
+      const ordered = numId != null && numIsBullet[numId] === false;
+      return { type: 'li', ordered, html: inlineHtml };
+    }
+    return { type: 'p', html: inlineHtml };
+  }
+
+  function serializeDocxBlocks(blocks) {
+    const out = [];
+    for (const b of blocks) {
+      if (b.type === 'li') {
+        const last = out[out.length - 1];
+        if (last && last.type === 'list' && last.ordered === b.ordered) last.items.push(b.html);
+        else out.push({ type: 'list', ordered: b.ordered, items: [b.html] });
+      } else if (b.html && b.html.trim()) {
+        out.push({ type: 'p', html: b.html });
+      }
+    }
+    let res = '';
+    for (let i = 0; i < out.length; i++) {
+      const cur = out[i], prev = out[i - 1];
+      if (i > 0) res += (cur.type === 'list' || prev.type === 'list') ? '\n' : '\n\n';
+      if (cur.type === 'p') {
+        res += cur.html;
+      } else {
+        const tag = cur.ordered ? 'ol' : 'ul';
+        res += `<${tag}>\n`;
+        cur.items.forEach(it => { res += ` <li>${it}</li>\n`; });
+        res += `</${tag}>`;
+      }
+    }
+    return stripLinkBold(res.trim());
+  }
+
+  async function parseDocx(file) {
+    const zip = await JSZip.loadAsync(file);
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) throw new Error('Not a valid .docx (no word/document.xml).');
+    const docXml = await docFile.async('string');
+    const relsFile = zip.file('word/_rels/document.xml.rels');
+    const rels = buildDocxRels(relsFile ? await relsFile.async('string') : '');
+    const numFile = zip.file('word/numbering.xml');
+    const numIsBullet = buildNumberingMap(numFile ? await numFile.async('string') : '');
+
+    const paras = docXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g) || [];
+    const blocks = [];
+    for (const p of paras) {
+      const info = parseDocxPara(p, rels, numIsBullet);
+      if (info) blocks.push(info);
+    }
+    const arts = [];
+    let cur = null;
+    for (const b of blocks) {
+      if (b.type === 'heading') {
+        if (cur) arts.push(cur);
+        cur = { heading: b.text, blocks: [] };
+      } else if (cur) {
+        cur.blocks.push(b);
+      }
+    }
+    if (cur) arts.push(cur);
+    return arts.map(a => ({ heading: a.heading, body: serializeDocxBlocks(a.blocks) }));
+  }
+
+  // --- Heading matching (the doc's article order can differ from the HTML's) ---
+  const HEADING_STOPWORDS = new Set(['the','and','for','with','from','that','this','your','are','was','has','its','into','over','a','an','of','to','in','on','at','as','by','is','it','be','how','why','what']);
+  function normHeading(s) {
+    return decodeEntities(String(s || ''))
+      .replace(/<[^>]*>/g, ' ').toLowerCase()
+      .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function headingTokens(s) {
+    return new Set(normHeading(s).split(' ').filter(w => w.length > 2 && !HEADING_STOPWORDS.has(w)));
+  }
+  function headingSim(a, b) {
+    const na = normHeading(a), nb = normHeading(b);
+    if (!na || !nb) return 0;
+    if (na === nb) return 1;
+    if (na.includes(nb) || nb.includes(na)) return 0.95;
+    const ta = headingTokens(a), tb = headingTokens(b);
+    if (!ta.size || !tb.size) return 0;
+    let inter = 0; ta.forEach(w => { if (tb.has(w)) inter++; });
+    return inter / (ta.size + tb.size - inter);
+  }
+
+  // Merge doc articles into the layout slots, matching BY HEADING. Leftovers pair by order.
+  function mergeDocIntoLayout(docArts) {
+    if (!articles.length) {
+      articles = docArts.map((d, i) => ({
+        id: nextId++, heading: d.heading, body: d.body,
+        rowIndex: i + 1, column: 'full', bg: '', whiteText: false,
+      }));
+      return { noLayout: true, matched: docArts.length, byTitle: 0, byOrder: 0, extraDoc: 0, unmatchedSlots: [] };
+    }
+    const colOrder = { full: 0, left: 1, right: 2 };
+    const slots = [...articles].sort((a, b) =>
+      (a.rowIndex - b.rowIndex) || (colOrder[a.column] - colOrder[b.column]) || (a.id - b.id));
+    const docUsed = new Array(docArts.length).fill(false);
+    const slotFilled = new Array(slots.length).fill(false);
+    const pairs = [];
+    for (let s = 0; s < slots.length; s++) {
+      for (let d = 0; d < docArts.length; d++) {
+        const sc = headingSim(slots[s].heading, docArts[d].heading);
+        if (sc >= 0.34) pairs.push({ s, d, sc });
+      }
+    }
+    pairs.sort((a, b) => b.sc - a.sc);
+    let byTitle = 0;
+    for (const p of pairs) {
+      if (slotFilled[p.s] || docUsed[p.d]) continue;
+      slots[p.s].heading = docArts[p.d].heading;
+      slots[p.s].body = docArts[p.d].body;
+      slotFilled[p.s] = true; docUsed[p.d] = true; byTitle++;
+    }
+    const leftoverSlots = []; for (let s = 0; s < slots.length; s++) if (!slotFilled[s]) leftoverSlots.push(s);
+    const leftoverDocs = []; for (let d = 0; d < docArts.length; d++) if (!docUsed[d]) leftoverDocs.push(d);
+    let byOrder = 0;
+    const k = Math.min(leftoverSlots.length, leftoverDocs.length);
+    for (let i = 0; i < k; i++) {
+      const s = leftoverSlots[i], d = leftoverDocs[i];
+      slots[s].heading = docArts[d].heading;
+      slots[s].body = docArts[d].body;
+      slotFilled[s] = true; docUsed[d] = true; byOrder++;
+    }
+    let maxRow = articles.reduce((m, a) => Math.max(m, a.rowIndex), 0);
+    let extraDoc = 0;
+    for (let d = 0; d < docArts.length; d++) {
+      if (docUsed[d]) continue;
+      articles.push({
+        id: nextId++, heading: docArts[d].heading, body: docArts[d].body,
+        rowIndex: ++maxRow, column: 'full', bg: '', whiteText: false,
+      });
+      extraDoc++;
+    }
+    const unmatchedSlots = [];
+    for (let s = 0; s < slots.length; s++) if (!slotFilled[s]) unmatchedSlots.push(slots[s].heading || '(untitled slot)');
+    return { noLayout: false, matched: byTitle + byOrder, byTitle, byOrder, extraDoc, unmatchedSlots };
   }
 
   // ----- PDF parsing -----
@@ -929,7 +1196,9 @@
   function renderArticleInline(a) {
     const parts = [];
     if (a.heading) parts.push(`<h2>${a.heading}</h2>`);
-    if (a.body) parts.push(a.body);
+    // Strip link bold again at output time — guarantees clean links even if the body
+    // was parsed before this rule existed or was hand-edited in the textarea.
+    if (a.body) parts.push(stripLinkBold(a.body));
     return parts.join('\n');
   }
 
@@ -1018,6 +1287,38 @@
       renderArticles();
     } catch (e) {
       status.textContent = `Parse failed: ${e.message}`;
+      status.classList.add('error');
+      console.error(e);
+    }
+  });
+
+  wireDrop('docxDrop', 'docxFile', 'docxFileName', async (file) => {
+    const status = $('docxStatus');
+    status.textContent = 'Reading Word doc…';
+    status.classList.remove('error');
+    try {
+      const docArts = await parseDocx(file);
+      if (!docArts.length) {
+        status.textContent = 'No article headings found. Headings must be bold and ~18pt.';
+        status.classList.add('error');
+        return;
+      }
+      const r = mergeDocIntoLayout(docArts);
+      let msg;
+      if (r.noLayout) {
+        msg = `Loaded ${docArts.length} article${docArts.length === 1 ? '' : 's'} from the doc (no HTML layout yet — laid out full-width). Parse the HTML first to keep the designed layout.`;
+      } else {
+        msg = `Filled ${r.matched} layout slot${r.matched === 1 ? '' : 's'} from the doc (${r.byTitle} matched by title`;
+        msg += r.byOrder ? `, ${r.byOrder} by order — verify those` : '';
+        msg += ').';
+        if (r.extraDoc) msg += ` ${r.extraDoc} extra doc article${r.extraDoc === 1 ? '' : 's'} appended as full-width row${r.extraDoc === 1 ? '' : 's'} — check Row #/Column.`;
+        if (r.unmatchedSlots.length) msg += ` ${r.unmatchedSlots.length} slot${r.unmatchedSlots.length === 1 ? '' : 's'} kept HTML text (no doc match): ${r.unmatchedSlots.join('; ')}.`;
+      }
+      status.textContent = msg;
+      if (r.byOrder || r.extraDoc || r.unmatchedSlots.length) status.classList.add('error');
+      renderArticles();
+    } catch (e) {
+      status.textContent = `Couldn't read the doc: ${e.message}`;
       status.classList.add('error');
       console.error(e);
     }
