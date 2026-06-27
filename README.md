@@ -13,6 +13,7 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 | [YT Thumbnail Downloader](#1-yt-thumbnail-downloader) | Bulk-extract YouTube thumbnails + post fields from the video posting task email | Weekly video blog posting (3-4 posts per niche site) |
 | [DOCX Batch → WordPress](#2-docx-batch--wordpress) | Convert a site's monthly ZIP of `.docx` articles into WordPress-ready posts with paired featured images and quality checks | Monthly blog batches per site |
 | [PDF → JPG](#3-pdf--jpg) | Convert selected PDF pages to JPG with optional crop, resize, and quality tuning | Pulling page-images out of brochures, flyers, or one-off PDFs for web use |
+| [DOCX Link Extractor](#4-docx-link-extractor) | List every hyperlink in a Word doc, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
 
 All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
 
@@ -212,6 +213,58 @@ Drop a PDF and the tool will:
 
 ---
 
+## 4. DOCX Link Extractor
+
+**File:** [`docx-link-extractor.html`](./docx-link-extractor.html)
+**SOP:** Ad-hoc — link auditing / migration
+
+### What it does
+
+Drop a Word `.docx` and the tool will:
+
+- Unzip the file in-browser (no server upload) and parse the raw OOXML.
+- Pull every hyperlink — the **linked text** and the **actual URL** behind it — from the body, **headers, footers, and footnotes/endnotes**.
+- Tag each link **External**, **Email** (`mailto:`), or **Internal** (a bookmark/anchor within the doc).
+- Show a running count of total links and unique URLs.
+- Filter the list by linked text or URL, **copy as Markdown** (`[text](url)`), **copy the table** (TSV, pastes straight into Sheets/Excel), or **download a CSV**.
+
+### Workflow
+
+1. Open the tool. Click **Choose a .docx** or drag the file onto the drop zone.
+2. The table fills in immediately. Use the filter box to find a specific link or domain.
+3. Export however you need it — Markdown for a quick reference, CSV/TSV for a spreadsheet audit.
+
+### How it reads links
+
+- Catches the standard `w:hyperlink` encoding (the common case) and resolves each `r:id` against the part's `.rels` file for the real target URL.
+- Also scans `HYPERLINK` field-code instructions as a fallback (older docs / mail-merge output); these show up labelled `(field-code link)` since the display text can't always be matched back to the URL.
+
+### Per-row copy
+
+Each table row has a **Copy** button beside the linked text and another beside the URL, so you can copy one field at a time — handy for locating a phrase on the target platform, then grabbing its URL.
+
+### Compare & update links (against a WordPress post)
+
+Below the table is a **Compare & update links** panel. The dropped document is treated as the *source of truth* for correct links. Paste your existing WordPress content (Code editor / WPBakery source — it must contain the actual `<a href="…">` tags) and click **Compare links**. The tool will:
+
+- Match each WP link to a document link **by its visible words**, aligning repeated phrases (e.g. several "Read the article." links) in **document order**.
+- Flag each WP link as **Up to date**, **Needs update** (URL differs from the doc), or **No match** (phrase not found in the doc — left untouched).
+- Let you apply fixes **one at a time** (per-row *Update* / *Undo*) or **all at once** (*Update all* / *Undo all*).
+- Rewrite only the `href` values in your pasted source — shortcodes, formatting, and everything else are preserved byte-for-byte — and output the updated content for you to copy back into WordPress.
+- List any links that are in the document but weren't found in the pasted content, so you can check them manually.
+
+Workflow: extract the doc's links → paste the current WP source → **Compare** → review the flagged rows → **Update all** (or pick individually) → **Copy updated content** → paste back into the WP editor and save.
+
+### Notes / limitations
+
+- `.docx` only — a legacy `.doc` must be re-saved as `.docx` in Word first (the tool tells you if you drop the wrong type).
+- Internal anchors render as `#bookmark` and aren't clickable (they point inside the document, not the web).
+- Field-code links report the URL reliably but their linked-text column is best-effort.
+- **Matching is by linked text.** If the WP anchor text was reworded so it no longer matches the doc, that link shows as *No match* and is left for you to handle — by design, nothing is changed unless the words line up.
+- URL comparison is exact, so `…/page` and `…/page/` (trailing slash) count as different and will be flagged for update.
+
+---
+
 ## How to use (team)
 
 1. Visit the **Live site** URL above.
@@ -283,6 +336,7 @@ rrm-web-tools/
 ├── yt-thumbnail-downloader.html     # YT Thumbnail Downloader
 ├── docx-batch-to-wordpress.html     # DOCX Batch → WordPress
 ├── pdf-to-jpg.html                  # PDF → JPG converter
+├── docx-link-extractor.html         # DOCX Link Extractor
 └── README.md                        # This file
 ```
 
