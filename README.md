@@ -12,7 +12,7 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 |------|---------|-------------|
 | [YT Thumbnail Downloader](#1-yt-thumbnail-downloader) | Bulk-extract YouTube thumbnails + post fields from the video posting task email | Weekly video blog posting (3-4 posts per niche site) |
 | [DOCX Batch → WordPress](#2-docx-batch--wordpress) | Convert a site's monthly ZIP of `.docx` articles into WordPress-ready posts with paired featured images and quality checks | Monthly blog batches per site |
-| [PDF → JPG](#3-pdf--jpg) | Convert selected PDF pages to JPG with optional crop, resize, and quality tuning | Pulling page-images out of brochures, flyers, or one-off PDFs for web use |
+| [PDF Tools](#3-pdf-tools) | Two-tab tool: convert PDF pages to JPG, or edit a PDF's metadata (title, author, keywords, dates, etc.) | Pulling page-images out of brochures, or fixing a PDF's properties before posting |
 | [DOCX Link Extractor](#4-docx-link-extractor) | List every hyperlink in a Word doc, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
 
 All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
@@ -170,33 +170,24 @@ Notes:
 
 ---
 
-## 3. PDF → JPG
+## 3. PDF Tools
 
-**File:** [`pdf-to-jpg.html`](./pdf-to-jpg.html)
-**SOP:** Ad-hoc — image extraction from PDFs
+**File:** [`pdf-to-jpg.html`](./pdf-to-jpg.html) (URL preserved for backward compatibility)
+**SOP:** Ad-hoc — image extraction and metadata editing for PDFs
 
-### What it does
+Upload a PDF once at the top, then use either of the two tabs below.
 
-Drop a PDF and the tool will:
+### Tab A — Convert to JPG
 
 - Render any subset of pages to a canvas in-browser via [PDF.js](https://mozilla.github.io/pdf.js/).
-- Let you **select pages** with a flexible range expression: `all`, `1,3,5`, `5-8`, or a mix (`1,3,5-8,12`). Quick pills for *All*, *Odd*, *Even*, and *First page only*.
-- Let you **draw a crop rectangle** on a live preview of the first selected page. The crop is stored as a fraction of the page so the **same crop applies to every selected page** (useful when every page has the same layout — e.g. trimming margins off a multi-page brochure).
+- **Select pages** with a flexible range expression: `all`, `1,3,5`, `5-8`, or a mix (`1,3,5-8,12`). Quick pills for *All*, *Odd*, *Even*, and *First page only*.
+- **Draw a crop rectangle** on a live preview of the first selected page. The crop is stored as a fraction of the page so the **same crop applies to every selected page** (useful when every page has the same layout — e.g. trimming margins off a multi-page brochure).
 - **Resize** the output via a *Max Width (px)* cap (aspect ratio preserved).
-- Tune **JPG quality** with a slider (10–100, default 85) and **render scale** (1×–4×, default 2× — higher means sharper source render before resize).
+- Tune **JPG quality** (10–100, default 85) and **render scale** (1×–4×, default 2× — higher means sharper source render before resize).
 - Output one JPG per page, named `{pdf-name}-page-{NN}.jpg` with zero-padded numbering.
 - Download images individually or grab everything as a single **ZIP**.
 
-### Workflow
-
-1. Open the tool. Click **Choose File** and pick your PDF.
-2. Enter the pages you want in the **Pages** field — leave blank or type `all` for everything, otherwise something like `1,3,5-8`.
-3. (Optional) Open **Crop** and drag a rectangle on the preview. Use **Clear crop** to start over.
-4. Adjust **JPG Quality**, **Render Scale**, and **Max Width** as needed.
-5. Click **Convert to JPG**. Previews appear in a grid with file size and dimensions.
-6. Click **Download** on any card, or **Download All (ZIP)** to grab the full set.
-
-### When to reach for each setting
+**Per-setting guidance**
 
 | Setting | Default | When to change |
 |---------|---------|----------------|
@@ -205,11 +196,22 @@ Drop a PDF and the tool will:
 | Max Width | (none) | Set to `1920` (or whatever your CMS expects) to keep file sizes web-friendly without losing too much detail. |
 | Crop | (none) | Set when every page has the same layout and you want to strip margins, headers, or footers uniformly. |
 
+### Tab B — Edit Metadata
+
+Powered by [pdf-lib](https://pdf-lib.js.org/). After upload, every editable field is pre-filled with the PDF's current value. Editable fields:
+
+- **Title**, **Author**, **Subject**, **Keywords** (comma-separated)
+- **Creator** (the app that authored the source content) and **Producer** (the app that wrote the PDF file)
+- **Creation Date** and **Modification Date** (each with a *Now* button)
+
+**Save & Download** writes a new PDF named `{pdf-name}-edited.pdf` — the original file on disk is never modified. **Reset to Original** reverts all fields to the values read at upload time.
+
 ### Notes
 
-- All processing is **client-side** — the PDF never leaves the browser. PDF.js and JSZip are loaded from CDN.
-- A white background is painted under transparent PDF pages, so JPG (no alpha) renders cleanly.
-- Cropping is per-document, not per-page. If pages have different layouts and you need different crops, run the tool once per page (or once per group of similarly-laid-out pages).
+- All processing is **client-side** — the PDF never leaves the browser. PDF.js, JSZip, and pdf-lib are loaded from CDN.
+- A white background is painted under transparent PDF pages on JPG export (no alpha).
+- Cropping is per-document, not per-page. If pages have different layouts and you need different crops, run the tool once per page group.
+- Empty metadata fields are written as empty strings — they won't carry over the original value. To leave a field unchanged, don't clear it before saving.
 
 ---
 
@@ -322,7 +324,8 @@ External dependencies used today (loaded from CDN, no install):
 - **mammoth** — `.docx` → HTML conversion (DOCX tool)
 - **JSZip** — in-browser ZIP unpacking and ZIP creation (DOCX tool, PDF → JPG tool)
 - **LanguageTool public API** — grammar checking (DOCX tool)
-- **PDF.js** — in-browser PDF rendering (PDF → JPG tool)
+- **PDF.js** — in-browser PDF rendering (PDF Tools — JPG mode)
+- **pdf-lib** — in-browser PDF read/write for metadata edits (PDF Tools — Metadata mode)
 
 If you need an offline build for any tool, all dependencies above can be inlined into the HTML file.
 

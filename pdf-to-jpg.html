@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PDF → JPG — RRM Web Support Tools</title>
+<title>PDF Tools — RRM Web Support Tools</title>
 <script>
   (function() {
     try {
@@ -303,24 +303,60 @@
   details > summary::-webkit-details-marker { display: none; }
   details > summary::before { content: "▸ "; color: var(--text-dim); }
   details[open] > summary::before { content: "▾ "; }
+
+  /* ---- Tab bar ---- */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 0;
+    margin-bottom: -1px;
+    transition: color .15s, border-color .15s;
+  }
+  .tab-btn:hover { color: var(--text); background: transparent; }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+  }
 </style>
 </head>
 <body>
 
 <a href="./index.html" class="back-link">← All Tools</a>
-<h1>PDF → JPG</h1>
-<p class="subtitle">Convert pages from a PDF into JPG images. Pick pages, crop, resize, and tune quality — everything runs in your browser.</p>
+<h1>PDF Tools</h1>
+<p class="subtitle">Convert PDF pages to JPG (with crop, resize, and quality controls) or edit a PDF's title, author, and other metadata — all in your browser.</p>
 
-<!-- Step 1: Upload -->
+<!-- Tabs -->
+<div class="tab-bar" role="tablist">
+  <button class="tab-btn active" data-tab="tabJpg" role="tab" aria-selected="true">Convert to JPG</button>
+  <button class="tab-btn" data-tab="tabMeta" role="tab" aria-selected="false">Edit Metadata</button>
+</div>
+
+<!-- Shared: PDF file upload -->
 <div class="card">
-  <h2>1. PDF File</h2>
+  <h2>PDF File</h2>
   <input type="file" id="fileInput" accept="application/pdf,.pdf">
   <div class="status" id="fileStatus"></div>
 </div>
 
-<!-- Step 2: Page selection -->
+<!-- ============== JPG TAB ============== -->
+<div class="tab-content" id="tabJpg">
+
+<!-- Step: Page selection -->
 <div class="card hidden" id="pageCard">
-  <h2>2. Pages to Convert</h2>
+  <h2>Pages to Convert</h2>
   <label>
     Pages
     <span class="hint">e.g. <code>1,3,5-8</code> &nbsp;·&nbsp; leave blank or use <code>all</code> for every page</span>
@@ -331,7 +367,7 @@
 
 <!-- Step 3: Options -->
 <div class="card hidden" id="optsCard">
-  <h2>3. Conversion Options</h2>
+  <h2>Conversion Options</h2>
 
   <div class="grid-3">
     <div>
@@ -380,7 +416,7 @@
 
 <!-- Step 4: Results -->
 <div class="card hidden" id="resultsCard">
-  <h2>4. Results</h2>
+  <h2>Results</h2>
   <div class="toolbar">
     <button id="downloadAllBtn">Download All (ZIP)</button>
     <span class="status" id="resultsStatus" style="margin-top: 0;"></span>
@@ -388,8 +424,72 @@
   <div class="results" id="resultsGrid"></div>
 </div>
 
+</div><!-- /tabJpg -->
+
+<!-- ============== METADATA TAB ============== -->
+<div class="tab-content hidden" id="tabMeta">
+
+<div class="card hidden" id="metaCard">
+  <h2>Document Metadata</h2>
+  <p class="subtitle" style="margin: -8px 0 14px;">Edit the PDF's built-in metadata fields. Leave anything you don't want to change as-is. Saving downloads a new PDF — the original file is never modified.</p>
+
+  <div class="grid-2">
+    <div>
+      <label>Title</label>
+      <input type="text" id="metaTitle" placeholder="(empty)">
+    </div>
+    <div>
+      <label>Author</label>
+      <input type="text" id="metaAuthor" placeholder="(empty)">
+    </div>
+  </div>
+
+  <label>Subject</label>
+  <input type="text" id="metaSubject" placeholder="(empty)">
+
+  <label>Keywords <span class="hint">comma-separated</span></label>
+  <input type="text" id="metaKeywords" placeholder="e.g. funeral, marketing, brochure">
+
+  <div class="grid-2">
+    <div>
+      <label>Creator <span class="hint">the app that authored the source</span></label>
+      <input type="text" id="metaCreator" placeholder="(empty)">
+    </div>
+    <div>
+      <label>Producer <span class="hint">the app that produced the PDF</span></label>
+      <input type="text" id="metaProducer" placeholder="(empty)">
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <label>Creation Date</label>
+      <div class="row">
+        <input type="datetime-local" id="metaCreationDate">
+        <button class="ghost" type="button" data-now="metaCreationDate">Now</button>
+      </div>
+    </div>
+    <div>
+      <label>Modification Date</label>
+      <div class="row">
+        <input type="datetime-local" id="metaModificationDate">
+        <button class="ghost" type="button" data-now="metaModificationDate">Now</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top: 18px;">
+    <button id="metaSaveBtn">Save &amp; Download</button>
+    <button class="secondary" id="metaResetBtn">Reset to Original</button>
+    <span class="status" id="metaStatus" style="margin-top: 0;"></span>
+  </div>
+</div>
+
+</div><!-- /tabMeta -->
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 (() => {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -404,6 +504,8 @@
     previewViewport: null,   // viewport used to render the preview canvas
     crop: null,              // { x, y, w, h } in fraction (0-1) of page
     results: [],             // [{ pageNum, blob, url, filename, width, height }]
+    fileBuffer: null,        // original PDF bytes (for pdf-lib metadata edits)
+    originalMeta: null,      // snapshot of metadata at load time (for Reset)
   };
 
   // ---------- File load ----------
@@ -415,6 +517,8 @@
     $('fileStatus').className = 'status';
     try {
       const buf = await file.arrayBuffer();
+      // Cache a copy of the bytes for pdf-lib (pdf.js may detach the original).
+      state.fileBuffer = buf.slice(0);
       const doc = await pdfjsLib.getDocument({ data: buf }).promise;
       state.pdfDoc = doc;
       state.numPages = doc.numPages;
@@ -430,6 +534,7 @@
       renderPagePills();
       hideCropUI();
       $('cropStatus').textContent = 'No crop set — full page will be exported.';
+      await loadMetadataFields();
     } catch (err) {
       console.error(err);
       $('fileStatus').textContent = 'Could not read PDF: ' + err.message;
@@ -813,6 +918,120 @@
     } catch (err) {
       console.error(err);
       setStatus('resultsStatus', 'ZIP failed: ' + err.message, 'err');
+    }
+  });
+
+  // ---------- Tabs ----------
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        const active = b.dataset.tab === target;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      document.querySelectorAll('.tab-content').forEach(c => {
+        c.classList.toggle('hidden', c.id !== target);
+      });
+    });
+  });
+
+  // ---------- Metadata: load on file upload ----------
+  function toLocalInput(date) {
+    if (!date || isNaN(date.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  function fromLocalInput(s) {
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  async function loadMetadataFields() {
+    if (!state.fileBuffer || typeof PDFLib === 'undefined') return;
+    try {
+      const doc = await PDFLib.PDFDocument.load(state.fileBuffer, { updateMetadata: false });
+      const meta = {
+        title: doc.getTitle() || '',
+        author: doc.getAuthor() || '',
+        subject: doc.getSubject() || '',
+        keywords: (doc.getKeywords() || '').toString(),
+        creator: doc.getCreator() || '',
+        producer: doc.getProducer() || '',
+        creationDate: doc.getCreationDate() || null,
+        modificationDate: doc.getModificationDate() || null,
+      };
+      state.originalMeta = meta;
+      applyMetadataToForm(meta);
+      $('metaCard').classList.remove('hidden');
+      setStatus('metaStatus', '');
+    } catch (err) {
+      console.error(err);
+      setStatus('metaStatus', 'Could not read metadata: ' + err.message, 'err');
+    }
+  }
+
+  function applyMetadataToForm(meta) {
+    $('metaTitle').value = meta.title;
+    $('metaAuthor').value = meta.author;
+    $('metaSubject').value = meta.subject;
+    $('metaKeywords').value = meta.keywords;
+    $('metaCreator').value = meta.creator;
+    $('metaProducer').value = meta.producer;
+    $('metaCreationDate').value = toLocalInput(meta.creationDate);
+    $('metaModificationDate').value = toLocalInput(meta.modificationDate);
+  }
+
+  // "Now" buttons next to date fields.
+  document.querySelectorAll('[data-now]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.now;
+      $(targetId).value = toLocalInput(new Date());
+    });
+  });
+
+  // ---------- Metadata: save ----------
+  $('metaSaveBtn').addEventListener('click', async () => {
+    if (!state.fileBuffer) {
+      setStatus('metaStatus', 'Upload a PDF first.', 'err');
+      return;
+    }
+    const btn = $('metaSaveBtn');
+    btn.disabled = true;
+    setStatus('metaStatus', 'Writing metadata…');
+    try {
+      const doc = await PDFLib.PDFDocument.load(state.fileBuffer);
+      doc.setTitle($('metaTitle').value || '');
+      doc.setAuthor($('metaAuthor').value || '');
+      doc.setSubject($('metaSubject').value || '');
+      const kwRaw = $('metaKeywords').value.trim();
+      const kwList = kwRaw ? kwRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+      doc.setKeywords(kwList);
+      doc.setCreator($('metaCreator').value || '');
+      doc.setProducer($('metaProducer').value || '');
+      const cDate = fromLocalInput($('metaCreationDate').value);
+      const mDate = fromLocalInput($('metaModificationDate').value);
+      if (cDate) doc.setCreationDate(cDate);
+      if (mDate) doc.setModificationDate(mDate);
+
+      const bytes = await doc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      triggerDownload(blob, `${safeName(state.pdfName)}-edited.pdf`);
+      setStatus('metaStatus', 'Saved — new PDF downloaded.', 'ok');
+    } catch (err) {
+      console.error(err);
+      setStatus('metaStatus', 'Save failed: ' + err.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ---------- Metadata: reset ----------
+  $('metaResetBtn').addEventListener('click', () => {
+    if (state.originalMeta) {
+      applyMetadataToForm(state.originalMeta);
+      setStatus('metaStatus', 'Reverted to the original values.', 'ok');
     }
   });
 
