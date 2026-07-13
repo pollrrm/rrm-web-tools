@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "RRM Marketing Guide Helper",
+  "version": "0.1.0",
+  "description": "Side-panel helper for prefilling Marketing Guide posts + thank-you pages on RRM niche WordPress sites. Paste the email → pick site/topic → Fill Post and Fill Page. Independent of the Video, Blog, and Training helpers.",
+  "permissions": ["storage", "sidePanel", "tabs"],
+  "host_permissions": [
+    "https://www.rrmathome.com/*",
+    "https://rrmathome.com/*",
+    "https://www.seniorcaremarketingmax.com/*",
+    "https://seniorcaremarketingmax.com/*",
+    "https://www.ringringmarketing.com/*",
+    "https://ringringmarketing.com/*",
+    "https://www.hospicehavenmarketing.com/*",
+    "https://hospicehavenmarketing.com/*"
+  ],
+  "action": {
+    "default_title": "RRM Marketing Guide Helper — open side panel",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.rrmathome.com/wp-admin/post-new.php*",
+        "https://rrmathome.com/wp-admin/post-new.php*",
+        "https://www.rrmathome.com/wp-admin/post.php*",
+        "https://rrmathome.com/wp-admin/post.php*",
+        "https://www.seniorcaremarketingmax.com/wp-admin/post-new.php*",
+        "https://seniorcaremarketingmax.com/wp-admin/post-new.php*",
+        "https://www.seniorcaremarketingmax.com/wp-admin/post.php*",
+        "https://seniorcaremarketingmax.com/wp-admin/post.php*",
+        "https://www.ringringmarketing.com/wp-admin/post-new.php*",
+        "https://ringringmarketing.com/wp-admin/post-new.php*",
+        "https://www.ringringmarketing.com/wp-admin/post.php*",
+        "https://ringringmarketing.com/wp-admin/post.php*",
+        "https://www.hospicehavenmarketing.com/wp-admin/post-new.php*",
+        "https://hospicehavenmarketing.com/wp-admin/post-new.php*",
+        "https://www.hospicehavenmarketing.com/wp-admin/post.php*",
+        "https://hospicehavenmarketing.com/wp-admin/post.php*"
+      ],
+      "js": ["content-wp.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
