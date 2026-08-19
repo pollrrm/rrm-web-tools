@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promo Scheduler — RRM Web Support Tools</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115; --panel: #181b22; --panel-2: #1c1f27; --border: #262a33; --border-strong: #2a2f3a;
+    --text: #e6e6e6; --text-muted: #b8bdc8; --text-dim: #8a93a3;
+    --accent: #5b8def; --accent-hover: #4a7ce0; --ok: #6cd17b; --error: #ff7a8a; --purple: #c8a8ff;
+    --secondary: #2a2f3a; --secondary-hover: #353b48; --input-bg: #0f1115; --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6; --border: #e1e4ea; --border-strong: #cbd0d8;
+    --text: #1a1d24; --text-muted: #475569; --text-dim: #64748b;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --ok: #15803d; --error: #b91c1c; --purple: #6d28d9;
+    --secondary: #e2e8f0; --secondary-hover: #cbd5e1; --input-bg: #ffffff; --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 1000; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; padding: 0;
+    transition: border-color .15s, color .15s, background .15s; box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; } .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 30px auto;
+    padding: 0 20px 60px; background: var(--bg); color: var(--text); line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); text-decoration: none;
+    font-size: 12px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    margin-bottom: 14px; transition: color .15s, border-color .15s;
+  }
+  .back-link:hover { color: var(--text); border-color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+  .card h2 {
+    font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin: 0 0 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  label { display: block; font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; font-weight: 600; }
+  label:first-of-type { margin-top: 0; }
+  label .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
+  input[type="text"], select {
+    width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-strong);
+    border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  .field-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
+  .field-note strong { color: var(--text-muted); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: var(--secondary);
+    color: var(--text); border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+    font-family: inherit; transition: background .15s;
+  }
+  .btn:hover { background: var(--secondary-hover); }
+  .copy-btn {
+    background: var(--secondary); color: var(--text-muted); padding: 4px 12px; font-size: 11px; border: 0;
+    border-radius: 4px; cursor: pointer; font-weight: 600;
+  }
+  .copy-btn:hover { background: var(--secondary-hover); color: var(--text); }
+  .copy-btn.copied { background: var(--ok); color: #06210d; }
+  pre {
+    margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-word; background: var(--input-bg);
+    border: 1px solid var(--border-strong); border-radius: 6px; overflow-x: auto;
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: var(--text);
+  }
+  .clockline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .clock { font-size: 12px; color: var(--text-dim); }
+  .clock strong { color: var(--accent); }
+  .status { font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: 6px; margin-top: 12px; border: 1px solid var(--border-strong); }
+  .status.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+  .status.off { color: var(--text-muted); }
+  details { margin-top: 6px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+  details ol, details ul { color: var(--text-muted); font-size: 13px; line-height: 1.7; padding-left: 20px; }
+  details code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="./index.html">&larr; All Tools</a>
+<h1>Promo Scheduler</h1>
+<p class="subtitle">Show or hide <strong>any element on any site</strong> during a date/time window &mdash; no plugin. Pick the window, copy the <strong>CSS class</strong> onto the element, and paste the <strong>one-time snippet</strong> once on the page. Works with WPBakery (Extra class name), Elementor (CSS Classes), or plain HTML.</p>
+
+<div class="card">
+  <h2>Settings</h2>
+  <div class="row">
+    <div>
+      <label>Timezone <span class="hint">(how the window is judged)</span></label>
+      <select id="tz">
+        <option value="America/Los_Angeles">Pacific — Los Angeles</option>
+        <option value="America/Denver">Mountain — Denver</option>
+        <option value="America/Chicago">Central — Chicago</option>
+        <option value="America/New_York">Eastern — New York</option>
+        <option value="">Visitor's local time (each device)</option>
+        <option value="UTC">UTC</option>
+        <option value="Europe/London">London</option>
+        <option value="Asia/Manila">Manila</option>
+        <option value="Australia/Sydney">Sydney</option>
+      </select>
+    </div>
+    <div>
+      <label>CSS class name <span class="hint">(marker; keep it unique per site)</span></label>
+      <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
+    </div>
+  </div>
+  <p class="field-note">Pick a timezone to pin the window to one clock everywhere (e.g. "ends midnight Pacific"), or <strong>Visitor's local time</strong> to run it in each viewer's own timezone.</p>
+</div>
+
+<div class="card">
+  <h2>Schedule window</h2>
+  <label>Start <span class="hint">(blank = show from the beginning)</span></label>
+  <input type="text" id="f_start" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 00:00:00">
+  <label>End <span class="hint">(blank = never ends)</span></label>
+  <input type="text" id="f_end" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 23:59:59">
+  <p class="field-note">Format: <strong>MM/DD/YYYY hh:mm:ss</strong> (24-hour; am/pm and seconds optional; date only = whole day). Keep the times at 00:00:00 &rarr; 23:59:59 for whole-day scheduling &mdash; just change the dates.</p>
+  <div class="clockline">
+    <span class="clock">Now in this timezone: <strong id="clock">&hellip;</strong></span>
+    <button class="btn" id="testBtn" type="button" title="Set the window to now (−2 min) through +1 hour so it's showing right away">Test: show now (1 hr)</button>
+  </div>
+  <div class="status off" id="status">&hellip;</div>
+</div>
+
+<div class="card">
+  <h2><span>1. CSS class &mdash; put on the element</span> <button class="copy-btn" id="copyClass">Copy</button></h2>
+  <pre id="classOut">&mdash;</pre>
+  <p class="field-note">Add these to the element's class list. WPBakery: <strong>Row/Element &rarr; Extra class name</strong>. Elementor: <strong>Advanced &rarr; CSS Classes</strong>. Plain HTML: the element's <code>class="&hellip;"</code>.</p>
+</div>
+
+<div class="card">
+  <h2><span>2. One-time snippet &mdash; paste once on the page</span> <button class="copy-btn" id="copySnippet">Copy</button></h2>
+  <pre id="snippetOut">&mdash;</pre>
+  <details>
+    <summary>How to install &amp; how it works</summary>
+    <ol>
+      <li>Paste the snippet <strong>once</strong> anywhere on the page (a footer/header code area, or a WPBakery <strong>Raw HTML</strong> / Elementor <strong>HTML</strong> widget). It controls every element that carries the class above.</li>
+      <li>It hides those elements by default and reveals one only while "now" (in the chosen timezone) is inside that element's window. Because it runs in the browser, page caching can't keep an expired promo visible.</li>
+      <li>Multiple elements each schedule independently &mdash; give each its own window. Overlapping windows show at the same time.</li>
+      <li>Change the timezone or class name above and both boxes update &mdash; but if you already installed a snippet with a different class/timezone, replace it.</li>
+      <li>After publishing, clear the site/page cache once.</li>
+    </ol>
+    <p style="font-size:12px;color:var(--text-dim);">Dates are encoded in the class as <code>&lt;class&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;class&gt;E&lt;&hellip;&gt;</code>; a date-only value counts the whole day (00:00:00&ndash;23:59:59).</p>
+  </details>
+</div>
+
+<script>
+function $(id){ return document.getElementById(id); }
+
+// Parse "MM/DD/YYYY hh:mm:ss" → YYYYMMDDHHMMSS (14) or date-only YYYYMMDD (8), or '' if invalid.
+function dtDigits(v){
+  v = String(v || '').trim();
+  if (!v) return '';
+  var m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/);
+  if (!m) return '';
+  var mo = +m[1], d = +m[2], y = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+  var p2 = function(n){ return String(n).padStart(2, '0'); };
+  if (m[4] === undefined) return '' + y + p2(mo) + p2(d);
+  var hh = +m[4], mi = +m[5], ss = m[6] !== undefined ? +m[6] : 0, ap = m[7];
+  if (ap){ ap = ap.toLowerCase(); if (ap === 'pm' && hh < 12) hh += 12; if (ap === 'am' && hh === 12) hh = 0; }
+  if (hh > 23 || mi > 59 || ss > 59) return '';
+  return '' + y + p2(mo) + p2(d) + p2(hh) + p2(mi) + p2(ss);
+}
+function padS(s){ return (s + '00000000000000').slice(0, 14); }
+function padE(s){ if (s.length >= 14) return s.slice(0, 14); if (s.length === 12) return s + '59'; if (s.length === 10) return s + '5959'; return s + '235959'; }
+
+// Sanitize the marker to a safe CSS/regex class name.
+function marker(){
+  var raw = ($('marker').value || '').replace(/[^A-Za-z0-9_]/g, '');
+  if (!raw) raw = 'timedPromo';
+  if (/^[0-9]/.test(raw)) raw = 'c' + raw;
+  return raw;
+}
+
+function tzOpts(base){ var o = Object.assign({}, base); var tz = $('tz').value; if (tz) o.timeZone = tz; return o; }
+function nowDigits(){
+  var p = new Intl.DateTimeFormat('en-CA', tzOpts({ hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })).formatToParts(new Date());
+  var o = {}; p.forEach(function(x){ o[x.type] = x.value; });
+  return o.year + o.month + o.day + o.hour + o.minute + o.second;
+}
+function parts(date){
+  var p = new Intl.DateTimeFormat('en-CA', tzOpts({ hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })).formatToParts(date);
+  var o = {}; p.forEach(function(x){ o[x.type] = x.value; }); return o;
+}
+function fieldValue(date){ var o = parts(date); return o.month + '/' + o.day + '/' + o.year + ' ' + o.hour + ':' + o.minute + ':' + o.second; }
+function dateMDY(date){ var o = parts(date); return o.month + '/' + o.day + '/' + o.year; }
+function human(digits){ return digits.length >= 14 ? digits.replace(/(....)(..)(..)(..)(..)(..)/, '$1-$2-$3 $4:$5:$6') : digits.replace(/(....)(..)(..)/, '$1-$2-$3'); }
+
+function scheduleClass(){
+  var m = marker(), s = dtDigits($('f_start').value), e = dtDigits($('f_end').value);
+  var out = [m]; if (s) out.push(m + 'S' + s); if (e) out.push(m + 'E' + e);
+  return out.join(' ');
+}
+
+function buildSnippet(){
+  var m = marker();
+  var tz = $('tz').value;
+  var tzArg = tz ? "timeZone:'" + tz + "'," : "";
+  return '' +
+'<style>.' + m + ':not(.' + m + 'On){display:none !important;}</style>\n' +
+'<script>\n' +
+'(function(){\n' +
+'  function now(){\n' +
+'    var p=new Intl.DateTimeFormat("en-CA",{' + tzArg + 'hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date());\n' +
+'    var o={};for(var i=0;i<p.length;i++){o[p[i].type]=p[i].value;}\n' +
+'    return o.year+o.month+o.day+o.hour+o.minute+o.second;\n' +
+'  }\n' +
+'  function padS(s){return (s+"00000000000000").slice(0,14);}\n' +
+'  function padE(s){if(s.length>=14)return s.slice(0,14);if(s.length===12)return s+"59";if(s.length===10)return s+"5959";return s+"235959";}\n' +
+'  function apply(){\n' +
+'    var t=now(),els=document.querySelectorAll(".' + m + '");\n' +
+'    for(var i=0;i<els.length;i++){\n' +
+'      var c=els[i].className;\n' +
+'      var s=(c.match(/' + m + 'S(\\d{8,14})/)||[])[1];\n' +
+'      var e=(c.match(/' + m + 'E(\\d{8,14})/)||[])[1];\n' +
+'      var show=(!s||t>=padS(s))&&(!e||t<=padE(e));\n' +
+'      els[i].classList.toggle("' + m + 'On",show);\n' +
+'    }\n' +
+'  }\n' +
+'  apply();setInterval(apply,1000);\n' +
+'})();\n' +
+'<\/script>';
+}
+
+function refreshStatus(){
+  var s = dtDigits($('f_start').value), e = dtDigits($('f_end').value), now = nowDigits();
+  var el = $('status');
+  var sBad = $('f_start').value.trim() && !s, eBad = $('f_end').value.trim() && !e;
+  $('f_start').style.borderColor = sBad ? 'var(--error)' : '';
+  $('f_end').style.borderColor = eBad ? 'var(--error)' : '';
+  if (sBad || eBad) { el.className = 'status off'; el.textContent = 'Check the date format (MM/DD/YYYY hh:mm:ss).'; return; }
+  var show = (!s || now >= padS(s)) && (!e || now <= padE(e));
+  if (show) {
+    el.className = 'status on';
+    el.textContent = e ? '● Showing now — hides at ' + human(padE(e)) : '● Showing now — no end set';
+  } else {
+    el.className = 'status off';
+    if (s && now < padS(s)) el.textContent = '○ Hidden — starts ' + human(padS(s));
+    else if (e && now > padE(e)) el.textContent = '○ Hidden — window ended ' + human(padE(e));
+    else el.textContent = '○ Hidden';
+  }
+}
+
+function refresh(){
+  $('classOut').textContent = scheduleClass();
+  $('snippetOut').textContent = buildSnippet();
+  refreshStatus();
+}
+
+function updateClock(){
+  $('clock').textContent = new Intl.DateTimeFormat('en-US', tzOpts({ weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })).format(new Date());
+  refreshStatus();
+}
+
+document.addEventListener('input', function(e){ if (e.target.matches('input, select')) refresh(); });
+document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(true); refresh(); } });
+
+$('testBtn').addEventListener('click', function(){
+  var now = Date.now();
+  $('f_start').value = fieldValue(new Date(now - 2 * 60000));
+  $('f_end').value = fieldValue(new Date(now + 60 * 60000));
+  refresh();
+});
+
+function wireCopy(btnId, getText){
+  $(btnId).addEventListener('click', function(){
+    var btn = $(btnId), text = getText();
+    (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject())
+      .catch(function(){ var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); });
+    var orig = btn.textContent; btn.textContent = 'Copied ✓'; btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
+  });
+}
+wireCopy('copyClass', scheduleClass);
+wireCopy('copySnippet', buildSnippet);
+
+// Default to today's whole-day window in the chosen timezone.
+function setDefaults(force){
+  var d = dateMDY(new Date());
+  if (force || !$('f_start').value) $('f_start').value = d + ' 00:00:00';
+  if (force || !$('f_end').value) $('f_end').value = d + ' 23:59:59';
+}
+setDefaults(false);
+updateClock(); setInterval(updateClock, 1000);
+refresh();
+</script>
+
+<script>
+  (function() {
+    function setTheme(t) { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {} }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle'; btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme'); btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() { var cur = document.documentElement.getAttribute('data-theme'); setTheme(cur === 'light' ? 'dark' : 'light'); });
+    document.body.appendChild(btn);
+  })();
+</script>
+
+</body>
+</html>

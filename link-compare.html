@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link Compare — RRM Web Support Tools</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1c1f27;
+    --border: #262a33;
+    --border-strong: #2a2f3a;
+    --text: #e6e6e6;
+    --text-muted: #b8bdc8;
+    --text-dim: #8a93a3;
+    --accent: #5b8def;
+    --accent-hover: #4a7ce0;
+    --ok: #6cd17b;
+    --ok-strong: #2d7a3e;
+    --error: #ff7a8a;
+    --warn: #f59e0b;
+    --purple: #c8a8ff;
+    --secondary: #2a2f3a;
+    --secondary-hover: #353b48;
+    --input-bg: #0f1115;
+    --add-bg: rgba(108, 209, 123, .22);
+    --add-border: rgba(108, 209, 123, .55);
+    --rem-bg: rgba(255, 122, 138, .22);
+    --rem-border: rgba(255, 122, 138, .55);
+    --warn-bg: rgba(245, 158, 11, .14);
+    --warn-border: rgba(245, 158, 11, .5);
+    --info-bg: rgba(91, 141, 239, .14);
+    --info-border: rgba(91, 141, 239, .5);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --border: #e1e4ea;
+    --border-strong: #cbd0d8;
+    --text: #1a1d24;
+    --text-muted: #475569;
+    --text-dim: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --ok-strong: #15803d;
+    --error: #b91c1c;
+    --warn: #b45309;
+    --purple: #6d28d9;
+    --secondary: #e2e8f0;
+    --secondary-hover: #cbd5e1;
+    --input-bg: #ffffff;
+    --add-bg: #dcfce7;
+    --add-border: #86efac;
+    --rem-bg: #fee2e2;
+    --rem-border: #fca5a5;
+    --warn-bg: #fef3c7;
+    --warn-border: #fcd34d;
+    --info-bg: #dbeafe;
+    --info-border: #93c5fd;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 1280px;
+    margin: 30px auto;
+    padding: 0 20px 60px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  .panes {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (min-width: 880px) {
+    .panes { grid-template-columns: 1fr 1fr; }
+  }
+  .pane {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pane h2 {
+    font-size: 14px;
+    margin: 0;
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .pane .hint { font-size: 12px; color: var(--text-dim); margin: 0; }
+
+  .seg {
+    display: inline-flex;
+    background: var(--panel-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+    align-self: flex-start;
+  }
+  .seg button {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-radius: 5px;
+    padding: 5px 14px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .seg button.active { background: var(--accent); color: #fff; }
+
+  .mode-body { display: none; flex-direction: column; gap: 10px; }
+  .mode-body.active { display: flex; }
+
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > * { min-width: 0; }
+  .grow { flex: 1; }
+
+  input[type="text"], input[type="url"], textarea, select {
+    background: var(--input-bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    transition: border-color .15s;
+  }
+  input[type="text"]:focus, input[type="url"]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    line-height: 1.45;
+    white-space: pre;
+    overflow-wrap: normal;
+  }
+  label.field {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  label.field .lab { font-weight: 500; }
+
+  button.btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+  }
+  button.btn:hover { background: var(--accent-hover); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  button.btn.secondary { background: var(--secondary); color: var(--text); }
+  button.btn.secondary:hover { background: var(--secondary-hover); }
+
+  .status {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    background: var(--panel-2);
+    color: var(--text-muted);
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.err { color: var(--error); border: 1px solid var(--rem-border); background: var(--rem-bg); }
+  .status.ok { color: var(--ok); border: 1px solid var(--add-border); background: var(--add-bg); }
+
+  .options {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    align-items: center;
+  }
+  .options .opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+  }
+  .options .opt input { accent-color: var(--accent); }
+  .options .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .results {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: none;
+  }
+  .results.show { display: block; }
+
+  .verdict {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel-2);
+    margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .verdict.ok { background: var(--add-bg); border-color: var(--add-border); }
+  .verdict.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+  .verdict.err { background: var(--rem-bg); border-color: var(--rem-border); }
+  .verdict-badge {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    padding: 5px 10px; border-radius: 5px; background: var(--panel); color: var(--text);
+    white-space: nowrap; border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .verdict.ok .verdict-badge { color: var(--ok); border-color: var(--add-border); }
+  .verdict.warn .verdict-badge { color: var(--warn); border-color: var(--warn-border); }
+  .verdict.err .verdict-badge { color: var(--error); border-color: var(--rem-border); }
+  .verdict-msg { font-size: 14px; color: var(--text); line-height: 1.45; flex: 1; min-width: 200px; }
+
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 12px 20px;
+    margin-bottom: 16px; font-size: 13px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .stat { color: var(--text-muted); }
+  .stat strong { color: var(--text); font-weight: 600; }
+  .stat.ok strong { color: var(--ok); }
+  .stat.err strong { color: var(--error); }
+  .stat.warn strong { color: var(--warn); }
+
+  .section { margin-bottom: 18px; }
+  .section > h3 {
+    font-size: 12px; margin: 0 0 8px;
+    text-transform: uppercase; letter-spacing: .04em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section h3 .count {
+    font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px;
+    background: var(--panel-2); color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .section.err > h3 { color: var(--error); }
+  .section.err h3 .count { color: var(--error); border-color: var(--rem-border); background: var(--rem-bg); }
+  .section.warn > h3 { color: var(--warn); }
+  .section.warn h3 .count { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+  .section.info > h3 { color: var(--accent); }
+  .section.info h3 .count { color: var(--accent); border-color: var(--info-border); background: var(--info-bg); }
+
+  .ltable {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .ltable th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-dim); font-weight: 600;
+    padding: 8px 10px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  .ltable td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text-muted); vertical-align: top;
+  }
+  .ltable tr:last-child td { border-bottom: none; }
+  .ltable .anchor { color: var(--text); font-weight: 500; }
+  .ltable .url { font-family: ui-monospace, "Cascadia Code", "Consolas", monospace; font-size: 12px; word-break: break-all; }
+  .ltable .url a { color: var(--accent); text-decoration: none; }
+  .ltable .url a:hover { text-decoration: underline; }
+  .ltable .arrow { color: var(--text-dim); }
+  .table-wrap { overflow-x: auto; }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .flag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+    border: 1px solid var(--border);
+  }
+  .flag.insecure { color: var(--error); border-color: var(--rem-border); background: var(--rem-bg); }
+  .flag.staging { color: var(--error); border-color: var(--rem-border); background: var(--rem-bg); }
+  .flag.empty { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+  .flag.relative { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+  .flag.mailbad { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+  .flag.shortcode { color: var(--accent); border-color: var(--info-border); background: var(--info-bg); }
+  .flag.side { color: var(--text-muted); background: var(--panel-2); }
+
+  .empty-note { font-size: 13px; color: var(--text-dim); padding: 4px 2px; }
+
+  details.inv {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; margin-top: 8px;
+  }
+  details.inv summary {
+    cursor: pointer; font-size: 12px; color: var(--text-muted); user-select: none;
+    text-transform: uppercase; letter-spacing: .03em; font-weight: 600;
+  }
+  details.inv[open] summary { margin-bottom: 10px; }
+
+  details.advanced {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  details.advanced summary {
+    cursor: pointer; font-size: 12px; color: var(--text-muted); user-select: none;
+    text-transform: uppercase; letter-spacing: .03em; font-weight: 600;
+  }
+  details.advanced[open] summary { margin-bottom: 10px; }
+  details.advanced .hint { font-size: 12px; color: var(--text-dim); margin: 0 0 8px; line-height: 1.5; }
+
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--text-dim); border-top-color: transparent;
+    border-radius: 50%; animation: spin .8s linear infinite;
+    vertical-align: -2px; margin-right: 4px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<a href="./index.html" class="back-link">← All Tools</a>
+<h1>Link Compare</h1>
+<p class="subtitle">Compare every link on two pages — your source vs the published WordPress post — to confirm each link made it across and points to the right place. Fetch a live URL or paste HTML/source on either side; reads real <code>&lt;a href&gt;</code> tags plus WPBakery/Elementor button shortcodes.</p>
+
+<div class="panes">
+
+  <div class="pane">
+    <h2>Source</h2>
+    <p class="hint">What the page <em>should</em> link to — the original copy code or a live reference URL.</p>
+    <div class="seg" data-side="source">
+      <button type="button" data-mode="url" class="active">Live URL</button>
+      <button type="button" data-mode="paste">Paste HTML</button>
+    </div>
+
+    <div class="mode-body active" data-side="source" data-mode="url">
+      <div class="row">
+        <input type="url" id="source-url" class="grow" placeholder="https://example.com/staging-page/" autocomplete="off">
+        <button class="btn" id="source-fetch">Fetch</button>
+      </div>
+    </div>
+    <div class="mode-body" data-side="source" data-mode="paste">
+      <textarea id="source-paste" placeholder="Paste the source HTML / WPBakery / Elementor / Code-editor markup here…"></textarea>
+      <label class="field">
+        <span class="lab">Optional base URL — only needed to resolve relative links like <code>/contact/</code></span>
+        <input type="text" id="source-base" placeholder="https://example.com/">
+      </label>
+    </div>
+    <div class="status" id="source-status"></div>
+  </div>
+
+  <div class="pane">
+    <h2>Published Page</h2>
+    <p class="hint">The live post — what visitors actually get.</p>
+    <div class="seg" data-side="page">
+      <button type="button" data-mode="url" class="active">Live URL</button>
+      <button type="button" data-mode="paste">Paste HTML</button>
+    </div>
+
+    <div class="mode-body active" data-side="page" data-mode="url">
+      <div class="row">
+        <input type="url" id="page-url" class="grow" placeholder="https://example.com/published-post/" autocomplete="off">
+        <button class="btn" id="page-fetch">Fetch</button>
+      </div>
+    </div>
+    <div class="mode-body" data-side="page" data-mode="paste">
+      <textarea id="page-paste" placeholder="Paste the published page's HTML (View Source / copied markup) here…"></textarea>
+      <label class="field">
+        <span class="lab">Optional base URL — only needed to resolve relative links</span>
+        <input type="text" id="page-base" placeholder="https://example.com/">
+      </label>
+    </div>
+    <div class="status" id="page-status"></div>
+  </div>
+
+</div>
+
+<div class="options">
+  <label class="opt"><input type="checkbox" id="opt-proto" checked> Treat http/https as same</label>
+  <label class="opt"><input type="checkbox" id="opt-www" checked> Ignore www.</label>
+  <label class="opt"><input type="checkbox" id="opt-slash" checked> Ignore trailing slash</label>
+  <label class="opt"><input type="checkbox" id="opt-frag" checked> Ignore #fragments</label>
+  <label class="opt"><input type="checkbox" id="opt-query"> Ignore ?query strings</label>
+  <label class="opt"><input type="checkbox" id="opt-mail" checked> Include mailto / tel</label>
+  <div class="actions">
+    <button class="btn secondary" id="btn-clear">Clear</button>
+    <button class="btn" id="btn-compare">Compare Links</button>
+  </div>
+</div>
+
+<details class="advanced" id="adv-proxy">
+  <summary>Advanced: custom fetch proxy (optional)</summary>
+  <p class="hint">Free public CORS proxies are slow and unreliable — they often time out on large WordPress pages. For dependable <strong>Live URL</strong> fetching, deploy your own (a free Cloudflare Worker takes ~2 minutes) and paste its URL here. It's tried first, before the public fallbacks. Put <code>{url}</code> where the encoded target URL should go, or leave it as a plain prefix. Stored only in this browser.</p>
+  <input type="text" id="custom-proxy" placeholder="https://your-worker.your-name.workers.dev/?url={url}">
+</details>
+
+<div class="results" id="results">
+  <div id="verdict"></div>
+  <div class="stats" id="stats"></div>
+  <div id="sections"></div>
+  <div id="inventory"></div>
+</div>
+
+<!-- Theme toggle -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
+</script>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // Cache of fetched HTML per side: { html, base }
+  const fetched = { source: null, page: null };
+
+  function setStatus(el, msg, kind) {
+    el.className = 'status show' + (kind ? ' ' + kind : '');
+    el.innerHTML = msg;
+  }
+  function clearStatus(el) { el.className = 'status'; el.textContent = ''; }
+
+  function escapeHTML(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  // ----- Mode toggle (URL / Paste) per side -----
+  document.querySelectorAll('.seg').forEach(seg => {
+    const side = seg.dataset.side;
+    seg.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        seg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        document.querySelectorAll('.mode-body[data-side="' + side + '"]').forEach(mb => {
+          mb.classList.toggle('active', mb.dataset.mode === b.dataset.mode);
+        });
+      });
+    });
+  });
+
+  function activeMode(side) {
+    const b = document.querySelector('.seg[data-side="' + side + '"] button.active');
+    return b ? b.dataset.mode : 'url';
+  }
+
+  // ----- Custom proxy field (persisted in localStorage) -----
+  (function () {
+    const cp = $('custom-proxy');
+    try { cp.value = localStorage.getItem('rrm-link-compare-proxy') || ''; } catch (e) {}
+    if (cp.value) $('adv-proxy').open = true;
+    cp.addEventListener('input', () => {
+      try { localStorage.setItem('rrm-link-compare-proxy', cp.value.trim()); } catch (e) {}
+    });
+  })();
+
+  // ----- URL fetching (custom proxy first, then direct, then public CORS proxies) -----
+  const PROXY_KEY = 'rrm-link-compare-proxy';
+  const DEFAULT_PROXIES = [
+    { name: 'direct', build: (u) => u },
+    { name: 'allorigins', build: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+    { name: 'allorigins-json', unwrap: true, build: (u) => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u) },
+    { name: 'corsproxy.io', build: (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u) }
+  ];
+
+  function customProxy() {
+    let t = ''; try { t = (localStorage.getItem(PROXY_KEY) || '').trim(); } catch (e) {}
+    return t;
+  }
+  function proxyList() {
+    const list = DEFAULT_PROXIES.slice();
+    const c = customProxy();
+    if (c) list.unshift({ name: 'custom proxy', build: (u) => {
+      const enc = encodeURIComponent(u);
+      if (c.includes('{url}')) return c.replace('{url}', enc);
+      if (c.includes('{raw}')) return c.replace('{raw}', u);
+      return c + enc;
+    }});
+    return list;
+  }
+  function fetchWithTimeout(target, ms) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    return fetch(target, { redirect: 'follow', signal: ctl.signal }).finally(() => clearTimeout(t));
+  }
+
+  async function fetchSide(side) {
+    const urlEl = $(side + '-url');
+    const statusEl = $(side + '-status');
+    const btn = $(side + '-fetch');
+    let url = urlEl.value.trim();
+    if (!url) { setStatus(statusEl, 'Enter a URL first.', 'err'); return; }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+    btn.disabled = true;
+    let lastErr = null;
+    for (const proxy of proxyList()) {
+      setStatus(statusEl, '<span class="spinner"></span>Fetching via ' + proxy.name + '…');
+      try {
+        const res = await fetchWithTimeout(proxy.build(url), 25000);
+        if (!res.ok) { lastErr = new Error('HTTP ' + res.status + ' (' + proxy.name + ')'); continue; }
+        let html = await res.text();
+        if (proxy.unwrap) { try { html = JSON.parse(html).contents || ''; } catch (e) { html = ''; } }
+        if (!html || html.indexOf('<') === -1) { lastErr = new Error('empty response (' + proxy.name + ')'); continue; }
+        fetched[side] = { html, base: url };
+        const n = extractLinks(html, url).length;
+        setStatus(statusEl, 'Fetched <strong>' + n + '</strong> link' + (n === 1 ? '' : 's') +
+          ' via <strong>' + proxy.name + '</strong>.', 'ok');
+        btn.disabled = false;
+        return;
+      } catch (err) {
+        lastErr = (err && err.name === 'AbortError') ? new Error('timeout (' + proxy.name + ')') : err;
+      }
+    }
+    btn.disabled = false;
+    fetched[side] = null;
+    setStatus(statusEl,
+      'Couldn\'t fetch this URL (' + (lastErr ? lastErr.message : 'unknown') + '). ' +
+      'Free proxies are often down or time out on large pages. <strong>Reliable fix:</strong> open the live page, press ' +
+      '<strong>Ctrl+U</strong> (View Source) → <strong>Ctrl+A</strong> → <strong>Ctrl+C</strong>, then switch this side to ' +
+      '<strong>Paste HTML</strong> and paste. Or set your own endpoint under <em>Advanced: custom fetch proxy</em>.', 'err');
+  }
+  $('source-fetch').addEventListener('click', () => fetchSide('source'));
+  $('page-fetch').addEventListener('click', () => fetchSide('page'));
+  ['source-url','page-url'].forEach(id => $(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); fetchSide(id.split('-')[0]); }
+  }));
+
+  // ----- Gather a side's HTML + base depending on active mode -----
+  function getSide(side) {
+    const mode = activeMode(side);
+    if (mode === 'url') {
+      if (fetched[side]) return { html: fetched[side].html, base: fetched[side].base, ok: true };
+      return { ok: false, msg: 'Fetch a URL first (or switch to Paste HTML).' };
+    }
+    const html = $(side + '-paste').value;
+    if (!html.trim()) return { ok: false, msg: 'Paste some HTML first.' };
+    let base = $(side + '-base').value.trim();
+    if (base && !/^https?:\/\//i.test(base)) base = 'https://' + base;
+    return { html, base: base || null, ok: true };
+  }
+
+  // ----- Link extraction -----
+  const STAGING_RE = /(^|\.)(staging|stage|dev|develop|test|testing|demo|beta|qa|sandbox|preview|wip)([.\-]|$)|localhost|127\.0\.0\.1|\.local(host)?\b|:\d{2,5}(\/|$)|wpengine|instawp|kinsta.*\btemp|pantheonsite|\.wpcomstaging\./i;
+
+  function classifyLink(raw, base) {
+    raw = (raw || '').trim();
+    const link = { raw, absolute: null, kind: 'other', address: '', flags: [] };
+    if (raw === '' || raw === '#' || /^#/.test(raw)) {
+      link.kind = 'anchor';
+      if (raw === '' || raw === '#') link.flags.push('empty');
+      return link;
+    }
+    if (/^javascript:/i.test(raw)) { link.kind = 'javascript'; link.flags.push('empty'); return link; }
+    if (/^mailto:/i.test(raw)) {
+      link.kind = 'mailto';
+      link.address = raw.slice(7).split('?')[0].trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(link.address)) link.flags.push('mailbad');
+      return link;
+    }
+    if (/^tel:/i.test(raw)) {
+      link.kind = 'tel';
+      link.address = raw.slice(4).replace(/[^\d+]/g, '');
+      if (link.address.replace(/\D/g, '').length < 7) link.flags.push('mailbad');
+      return link;
+    }
+    // Try to resolve to an absolute http(s) URL
+    let abs = null;
+    try { abs = new URL(raw).href; }
+    catch (e) {
+      if (base) { try { abs = new URL(raw, base).href; } catch (e2) {} }
+    }
+    if (!abs) { link.kind = 'relative'; link.flags.push('relative'); return link; }
+    link.absolute = abs;
+    try {
+      const u = new URL(abs);
+      link.kind = /^https?:$/.test(u.protocol) ? 'http' : 'other';
+      if (u.protocol === 'http:') link.flags.push('insecure');
+      if (STAGING_RE.test(u.hostname) || STAGING_RE.test(abs)) link.flags.push('staging');
+    } catch (e) {}
+    return link;
+  }
+
+  // Pull links out of page-builder shortcode / JSON markup that has no real <a> tag:
+  //   WPBakery:  link="url:https%3A%2F%2F…|title:Foo|target:_blank"  (also url=, button_link=, etc.)
+  //   Elementor: "url":"https:\/\/…"
+  function extractBuilderLinks(html) {
+    const found = [];
+    const attrRe = /\b(?:link|url|button_link|btn_link|button_url|link_url|el_link|i_link)\s*=\s*(["'])([\s\S]*?)\1/gi;
+    let m;
+    while ((m = attrRe.exec(html)) !== null) {
+      const val = m[2];
+      if (/(^|\|)\s*url:/i.test(val)) {
+        // WPBakery composite:  url:…|title:…|target:…
+        let url = '', title = '';
+        val.split('|').forEach(p => {
+          const mm = p.match(/^\s*(url|title|target)\s*:([\s\S]*)$/i);
+          if (mm) {
+            const k = mm[1].toLowerCase();
+            let v = mm[2];
+            try { v = decodeURIComponent(v); } catch (e) {}
+            if (k === 'url') url = v; else if (k === 'title') title = v;
+          }
+        });
+        if (url) found.push({ url, text: title });
+      } else {
+        let v = val.replace(/\\\//g, '/');
+        if (/%[0-9a-f]{2}/i.test(v)) { try { v = decodeURIComponent(v); } catch (e) {} }
+        if (/^(https?:\/\/|mailto:|tel:|\/)/i.test(v)) found.push({ url: v, text: '' });
+      }
+    }
+    const jsonRe = /"url"\s*:\s*"((?:https?:\\?\/\\?\/|mailto:|tel:)[^"\\]*(?:\\.[^"\\]*)*)"/gi;
+    while ((m = jsonRe.exec(html)) !== null) {
+      const v = m[1].replace(/\\\//g, '/').replace(/\\"/g, '"');
+      found.push({ url: v, text: '' });
+    }
+    return found;
+  }
+
+  function extractLinks(html, base) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Honor an in-document <base href> if present and no explicit base given.
+    if (!base) {
+      const b = doc.querySelector('base[href]');
+      if (b) { try { base = new URL(b.getAttribute('href')).href; } catch (e) {} }
+    }
+    const out = [];
+    const seen = new Set();
+    doc.querySelectorAll('a[href]').forEach(a => {
+      const raw = a.getAttribute('href') || '';
+      if (!raw.trim()) return;
+      const text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      const link = classifyLink(raw, base);
+      link.text = text;
+      out.push(link);
+      seen.add(link.absolute || link.raw);
+    });
+    // Add builder/shortcode links that aren't already present as real <a> tags.
+    extractBuilderLinks(html).forEach(b => {
+      const link = classifyLink(b.url, base);
+      const id = link.absolute || link.raw;
+      if (seen.has(id)) return;
+      seen.add(id);
+      link.text = b.text || '';
+      link.fromShortcode = true;
+      out.push(link);
+    });
+    return out;
+  }
+
+  // ----- Normalized matching key -----
+  function opt(id) { return $(id).checked; }
+
+  function matchKey(link) {
+    if (link.kind === 'mailto') return opt('opt-mail') ? 'mailto:' + link.address.toLowerCase() : null;
+    if (link.kind === 'tel')    return opt('opt-mail') ? 'tel:' + link.address.replace(/\D/g, '') : null;
+    if (!link.absolute) return null; // anchors, javascript:, unresolved relative
+    let u;
+    try { u = new URL(link.absolute); } catch (e) { return null; }
+    let host = u.hostname.toLowerCase();
+    if (opt('opt-www')) host = host.replace(/^www\./, '');
+    const proto = opt('opt-proto') ? '' : (u.protocol + '//');
+    let path = u.pathname || '/';
+    if (opt('opt-slash') && path.length > 1) path = path.replace(/\/+$/, '') || '/';
+    const query = opt('opt-query') ? '' : (u.search || '');
+    const frag = opt('opt-frag') ? '' : (u.hash || '');
+    return proto + host + path + query + frag;
+  }
+
+  function normText(t) {
+    return (t || '').toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:!?'"’“”)\]]+$/g, '').trim();
+  }
+
+  // ----- Compare -----
+  $('btn-compare').addEventListener('click', runCompare);
+  $('btn-clear').addEventListener('click', () => {
+    ['source','page'].forEach(s => {
+      $(s + '-url').value = ''; $(s + '-paste').value = ''; $(s + '-base').value = '';
+      clearStatus($(s + '-status'));
+      fetched[s] = null;
+    });
+    $('results').classList.remove('show');
+    $('verdict').innerHTML = ''; $('stats').innerHTML = '';
+    $('sections').innerHTML = ''; $('inventory').innerHTML = '';
+  });
+
+  function runCompare() {
+    const src = getSide('source');
+    const pg = getSide('page');
+    if (!src.ok) { setStatus($('source-status'), src.msg, 'err'); return; }
+    if (!pg.ok)  { setStatus($('page-status'), pg.msg, 'err'); return; }
+
+    const srcLinks = extractLinks(src.html, src.base).map(l => (l.key = matchKey(l), l));
+    const pageLinks = extractLinks(pg.html, pg.base).map(l => (l.key = matchKey(l), l));
+
+    // --- Multiset diff by matching key ---
+    const pagePool = pageLinks.filter(l => l.key != null).map(l => ({ l, used: false }));
+    const missing = [];
+    const matched = [];
+    for (const s of srcLinks) {
+      if (s.key == null) continue;
+      const hit = pagePool.find(p => !p.used && p.l.key === s.key);
+      if (hit) { hit.used = true; matched.push({ src: s, page: hit.l }); }
+      else missing.push(s);
+    }
+    const extra = pagePool.filter(p => !p.used).map(p => p.l);
+
+    // --- Destination mismatches: same anchor text, different destination ---
+    const srcByText = new Map();
+    srcLinks.forEach(l => { const t = normText(l.text); if (t) (srcByText.get(t) || srcByText.set(t, []).get(t)).push(l); });
+    const pageByText = new Map();
+    pageLinks.forEach(l => { const t = normText(l.text); if (t) (pageByText.get(t) || pageByText.set(t, []).get(t)).push(l); });
+    const mismatches = [];
+    for (const [t, sList] of srcByText) {
+      const pList = pageByText.get(t);
+      if (!pList) continue;
+      const sKeys = new Set(sList.map(l => l.key).filter(Boolean));
+      const pKeys = new Set(pList.map(l => l.key).filter(Boolean));
+      if (!sKeys.size || !pKeys.size) continue;
+      const shared = [...sKeys].some(k => pKeys.has(k));
+      if (!shared) {
+        mismatches.push({
+          text: sList[0].text,
+          srcUrls: [...new Set(sList.map(l => l.absolute || (l.kind + ':' + l.address)).filter(Boolean))],
+          pageUrls: [...new Set(pList.map(l => l.absolute || (l.kind + ':' + l.address)).filter(Boolean))]
+        });
+      }
+    }
+
+    // --- Health flags per side ---
+    const health = {
+      source: srcLinks.filter(l => l.flags.length),
+      page: pageLinks.filter(l => l.flags.length)
+    };
+
+    render({ srcLinks, pageLinks, missing, extra, matched, mismatches, health });
+    $('results').classList.add('show');
+    $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ----- Rendering -----
+  function linkDisplay(l) {
+    if (l.absolute) return l.absolute;
+    if (l.kind === 'mailto') return 'mailto:' + l.address;
+    if (l.kind === 'tel') return 'tel:' + l.address;
+    if (l.kind === 'anchor') return l.raw || '#';
+    return l.raw;
+  }
+  function urlCell(l) {
+    const disp = linkDisplay(l);
+    if (l.absolute) return '<a href="' + escapeHTML(l.absolute) + '" target="_blank" rel="noopener">' + escapeHTML(disp) + '</a>';
+    return escapeHTML(disp);
+  }
+  function flagBadges(l) {
+    const label = { insecure: 'http', staging: 'staging', empty: 'empty', relative: 'relative', mailbad: 'malformed' };
+    const items = l.flags.map(f => '<span class="flag ' + f + '">' + (label[f] || f) + '</span>');
+    if (l.fromShortcode) items.push('<span class="flag shortcode">shortcode</span>');
+    if (!items.length) return '';
+    return '<div class="badges">' + items.join('') + '</div>';
+  }
+
+  function render(r) {
+    // Verdict
+    const nMiss = r.missing.length, nMis = r.mismatches.length, nExtra = r.extra.length;
+    let kind, badge, msg;
+    if (nMiss === 0 && nMis === 0) {
+      kind = 'ok'; badge = 'All Links Present';
+      msg = 'Every source link was found on the published page pointing to the same destination.' +
+        (nExtra ? ' The page has ' + nExtra + ' extra link' + (nExtra === 1 ? '' : 's') + ' not in the source (often nav, footer, or related-post widgets — review below).' : '');
+    } else if (nMis > 0 && nMiss === 0) {
+      kind = 'warn'; badge = 'Wrong Destinations';
+      msg = nMis + ' link' + (nMis === 1 ? '' : 's') + ' with the same anchor text point to a different URL on the page than in the source. This is the classic "right words, wrong link" — check these first.';
+    } else {
+      kind = nMiss > 0 ? 'err' : 'warn';
+      badge = nMiss > 0 ? (nMiss + ' Link' + (nMiss === 1 ? '' : 's') + ' Missing') : 'Differences Found';
+      const bits = [];
+      if (nMiss) bits.push(nMiss + ' source link' + (nMiss === 1 ? '' : 's') + ' not found on the page');
+      if (nMis) bits.push(nMis + ' pointing to a different destination');
+      msg = 'The published page doesn\'t fully match the source: ' + bits.join(', ') + '. See details below.';
+    }
+    $('verdict').innerHTML = '<div class="verdict ' + kind + '">' +
+      '<div class="verdict-badge">' + badge + '</div>' +
+      '<div class="verdict-msg">' + msg + '</div></div>';
+
+    // Stats
+    const nHealth = r.health.source.length + r.health.page.length;
+    $('stats').innerHTML =
+      '<div class="stat">Source links: <strong>' + r.srcLinks.length + '</strong></div>' +
+      '<div class="stat">Page links: <strong>' + r.pageLinks.length + '</strong></div>' +
+      '<div class="stat ok">Matched: <strong>' + r.matched.length + '</strong></div>' +
+      '<div class="stat ' + (nMiss ? 'err' : 'ok') + '">Missing on page: <strong>' + nMiss + '</strong></div>' +
+      '<div class="stat ' + (nMis ? 'warn' : 'ok') + '">Wrong destination: <strong>' + nMis + '</strong></div>' +
+      '<div class="stat">Extra on page: <strong>' + nExtra + '</strong></div>' +
+      '<div class="stat ' + (nHealth ? 'warn' : 'ok') + '">Flagged: <strong>' + nHealth + '</strong></div>';
+
+    // Sections
+    let html = '';
+
+    // Missing on page
+    html += section('err', 'Missing on the published page', r.missing.length,
+      'In the source but not found on the page — these links didn\'t make it across.',
+      r.missing.length
+        ? table(['Anchor text', 'Source destination'], r.missing.map(l =>
+            ['<span class="anchor">' + (escapeHTML(l.text) || '<em style="color:var(--text-dim)">(no text)</em>') + '</span>' + flagBadges(l),
+             '<span class="url">' + urlCell(l) + '</span>']))
+        : okNote('Nothing missing — every source link is present on the page.'));
+
+    // Wrong destination
+    html += section('warn', 'Same text, different destination', r.mismatches.length,
+      'The link text matches but it points somewhere else on the page vs the source — verify which URL is correct.',
+      r.mismatches.length
+        ? table(['Anchor text', 'Source →', 'Page →'], r.mismatches.map(m =>
+            ['<span class="anchor">' + escapeHTML(m.text) + '</span>',
+             '<span class="url">' + m.srcUrls.map(u => '<div>' + escapeHTML(u) + '</div>').join('') + '</span>',
+             '<span class="url">' + m.pageUrls.map(u => '<div>' + escapeHTML(u) + '</div>').join('') + '</span>']))
+        : okNote('No anchor-text/URL conflicts.'));
+
+    // Extra on page
+    html += section('info', 'Extra on the page', r.extra.length,
+      'On the published page but not in the source — usually theme nav, footer, or related-post links. Scan for anything unexpected.',
+      r.extra.length
+        ? table(['Anchor text', 'Page destination'], r.extra.map(l =>
+            ['<span class="anchor">' + (escapeHTML(l.text) || '<em style="color:var(--text-dim)">(no text)</em>') + '</span>' + flagBadges(l),
+             '<span class="url">' + urlCell(l) + '</span>']))
+        : okNote('No unexpected extra links.'));
+
+    // Link health
+    const healthRows = [];
+    r.health.source.forEach(l => healthRows.push(['source', l]));
+    r.health.page.forEach(l => healthRows.push(['page', l]));
+    html += section('warn', 'Link health flags', healthRows.length,
+      'Individual links worth a look regardless of matching: insecure http, staging/dev domains, empty (#) links, unresolved relative links, or malformed mailto/tel.',
+      healthRows.length
+        ? table(['Side', 'Anchor text', 'Link', 'Flags'], healthRows.map(([side, l]) =>
+            ['<span class="flag side">' + side + '</span>',
+             '<span class="anchor">' + (escapeHTML(l.text) || '<em style="color:var(--text-dim)">(no text)</em>') + '</span>',
+             '<span class="url">' + urlCell(l) + '</span>',
+             flagBadges(l)]))
+        : okNote('No link-health issues detected on either side.'));
+
+    $('sections').innerHTML = html;
+
+    // Full inventory (collapsible)
+    $('inventory').innerHTML =
+      inventory('Source', r.srcLinks) + inventory('Published page', r.pageLinks);
+  }
+
+  function section(kind, title, count, desc, body) {
+    return '<div class="section ' + kind + '">' +
+      '<h3>' + escapeHTML(title) + ' <span class="count">' + count + '</span></h3>' +
+      '<p class="empty-note" style="margin:0 0 8px">' + desc + '</p>' +
+      body + '</div>';
+  }
+  function table(headers, rows) {
+    return '<div class="table-wrap"><table class="ltable"><thead><tr>' +
+      headers.map(h => '<th>' + escapeHTML(h) + '</th>').join('') +
+      '</tr></thead><tbody>' +
+      rows.map(cells => '<tr>' + cells.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table></div>';
+  }
+  function okNote(msg) { return '<div class="empty-note">✓ ' + escapeHTML(msg) + '</div>'; }
+
+  function inventory(label, links) {
+    const rows = links.map(l =>
+      ['<span class="anchor">' + (escapeHTML(l.text) || '<em style="color:var(--text-dim)">(no text)</em>') + '</span>',
+       '<span class="url">' + urlCell(l) + '</span>',
+       flagBadges(l)]);
+    const body = links.length
+      ? table(['Anchor text', 'Destination', 'Flags'], rows)
+      : '<div class="empty-note">No links found.</div>';
+    return '<details class="inv"><summary>' + escapeHTML(label) + ' — all ' + links.length +
+      ' link' + (links.length === 1 ? '' : 's') + '</summary>' + body + '</details>';
+  }
+</script>
+
+</body>
+</html>

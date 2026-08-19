@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RRM Promo Helper</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #0f1115; color: #e6e6e6; font-size: 13px; line-height: 1.45; padding: 14px;
+  }
+  h1 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .scope { font-size: 10px; background: #2a2f3a; color: #7dd3fc; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  .subtitle { color: #8a93a3; font-size: 11px; margin: 0 0 12px; }
+  .status-line {
+    margin-bottom: 12px; padding: 8px 10px; background: #181b22; border: 1px solid #262a33;
+    border-radius: 6px; font-size: 11px; color: #8a93a3;
+  }
+  .status-line.ok { border-color: #2d7a3e; color: #6cd17b; }
+  .status-line.warn { border-color: #c08a3e; color: #ffb04d; }
+
+  textarea, input[type="text"], input[type="url"], input[type="date"], input[type="datetime-local"], input[type="number"] {
+    width: 100%; padding: 8px 10px; background: #0f1115; border: 1px solid #2a2f3a;
+    border-radius: 6px; color: #e6e6e6; font-size: 12px; font-family: inherit;
+  }
+  textarea { min-height: 96px; max-height: 240px; resize: vertical; }
+  textarea:focus, input:focus { outline: none; border-color: #38bdf8; }
+
+  button {
+    background: #38bdf8; color: #0f1115; border: 0; padding: 8px 14px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; cursor: pointer; margin-top: 10px; width: 100%;
+  }
+  button:hover { background: #1ea3df; }
+  button:disabled { background: #2a2f3a; color: #6a7180; cursor: not-allowed; }
+  button.secondary { background: #2a2f3a; color: #e6e6e6; }
+  button.secondary:hover { background: #353b48; }
+  button.busy { background: #4a4a4a; color: #e6e6e6; cursor: progress; }
+
+  .err { color: #ff7676; font-size: 11px; margin-top: 6px; min-height: 14px; }
+
+  .card { background: #181b22; border: 1px solid #262a33; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a93a3; margin: 0 0 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .draft-chip { background: #3a2f10; color: #ffb04d; font-size: 9px; padding: 1px 6px; border-radius: 8px; letter-spacing: .3px; }
+
+  label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #8a93a3; margin: 10px 0 4px; }
+  label:first-of-type { margin-top: 0; }
+  .hint { text-transform: none; letter-spacing: 0; color: #6a7180; }
+
+  .tmpl-tabs { display: flex; gap: 6px; margin-bottom: 4px; }
+  .tmpl-tab {
+    flex: 1; text-align: center; padding: 8px; border-radius: 6px; cursor: pointer;
+    background: #0f1115; border: 1px solid #2a2f3a; color: #8a93a3; font-weight: 600; font-size: 12px;
+  }
+  .tmpl-tab.active { border-color: #38bdf8; color: #e6e6e6; box-shadow: inset 0 0 0 1px #38bdf8; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .colbox { border: 1px solid #2a2f3a; border-radius: 6px; padding: 4px 10px 10px; margin-top: 10px; background: #0f1115; }
+  .colbox .col-title { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #7dd3fc; font-weight: 700; margin: 10px 0 0; }
+
+  .out-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .copy-btn {
+    background: #2a2f3a; color: #b8bdc8; padding: 3px 10px; font-size: 10px; border: 0; border-radius: 4px;
+    cursor: pointer; font-weight: 600; width: auto; margin: 0;
+  }
+  .copy-btn:hover { background: #353b48; color: #fff; }
+  .copy-btn.copied { background: #2d7a3e; color: #fff; }
+  pre {
+    margin: 8px 0 0; padding: 8px; white-space: pre-wrap; word-break: break-word; max-height: 200px;
+    overflow-y: auto; background: #0f1115; border: 1px solid #2a2f3a; border-radius: 4px;
+    font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: 10px; line-height: 1.5; color: #e6e6e6;
+  }
+  details { margin-top: 12px; }
+  details summary { cursor: pointer; color: #38bdf8; font-size: 11px; font-weight: 600; }
+  details ol { color: #b8bdc8; font-size: 11px; line-height: 1.6; padding-left: 18px; margin: 8px 0 0; }
+  details code { background: #0f1115; border: 1px solid #2a2f3a; padding: 0 4px; border-radius: 3px; }
+  .hidden { display: none !important; }
+  .spinner {
+    display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(0,0,0,.3);
+    border-top-color: #0f1115; border-radius: 50%; animation: spin .9s linear infinite; vertical-align: -1px; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>RRM Promo Helper <span class="scope" id="scope">—</span></h1>
+<p class="subtitle">Paste the promo email (Outlook rich-text paste works), click <strong>Parse</strong>, add the Media image ID(s), then Copy the row or Fill the homepage.</p>
+
+<div id="tabStatus" class="status-line">Checking active tab…</div>
+
+<div class="card">
+  <label>Promo email <span class="hint">— paste the full request</span></label>
+  <textarea id="email" placeholder="Paste the promo email here…"></textarea>
+  <button id="parseBtn">Parse</button>
+  <div class="err" id="errMsg"></div>
+</div>
+
+<div class="card">
+  <h2>Homepage slot</h2>
+  <div class="tmpl-tabs">
+    <div class="tmpl-tab active" data-slot="solo1">Solo Promo</div>
+    <div class="tmpl-tab" data-slot="solo2">Solo Promo 2</div>
+    <div class="tmpl-tab" data-slot="dual">Dual Promo</div>
+  </div>
+
+  <!-- shared schedule (Eastern time, to the second) — stacked so the full
+       date+time value fits in the narrow side panel -->
+  <div style="margin-top:12px;">
+    <label>Start <span class="hint">(Pacific / LA)</span></label>
+    <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" id="f_start" placeholder="MM/DD/YYYY 00:00:00">
+    <label>End <span class="hint">(Pacific / LA)</span></label>
+    <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" id="f_end" placeholder="MM/DD/YYYY 23:59:59">
+  </div>
+  <p style="font-size:11px;color:#6a7180;margin:8px 0 0;">Pacific / Los Angeles (the site's timezone). Format: <strong>MM/DD/YYYY hh:mm:ss</strong> (24-hour). Keep the times at 00:00:00 &rarr; 23:59:59 for whole-day scheduling &mdash; just change the dates.</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;">
+    <span style="font-size:11px;color:#8a93a3;">Now in LA: <strong id="etNowLabel" style="color:#7dd3fc;">&hellip;</strong></span>
+    <button class="copy-btn" id="testWindowBtn" type="button" title="Set the window to LA now (−2 min) through +1 hour so it shows immediately with time to paste, save, and clear cache">Test: show now (1 hr)</button>
+  </div>
+
+  <!-- SINGLE -->
+  <div id="singleFields">
+    <label>Title</label>
+    <input type="text" id="s_title" placeholder="Get More At-Need Calls with Google LSAs">
+    <label>Date line <span class="hint">(the separator text)</span></label>
+    <input type="text" id="s_dateline" placeholder="Tuesday, Aug. 11, at 2 p.m. Eastern">
+    <label>Short description</label>
+    <textarea id="s_desc" style="min-height:70px;"></textarea>
+    <div class="grid2">
+      <div>
+        <label>CTA button text</label>
+        <input type="text" id="s_cta" placeholder="Save My Spot">
+      </div>
+      <div>
+        <label>Image ID <span class="hint">(Media Library)</span></label>
+        <input type="number" id="s_img" placeholder="14096">
+      </div>
+    </div>
+    <label>Link <span class="hint">(image + button)</span></label>
+    <input type="url" id="s_link" placeholder="https://get.ringringmarketing.com/…">
+  </div>
+
+  <!-- DUAL -->
+  <div id="dualFields" class="hidden">
+    <label>Headline <span class="hint">(shared)</span></label>
+    <input type="text" id="d_headline" placeholder="Show Up Sooner. Start More Conversations.">
+    <label>Body <span class="hint">(shared)</span></label>
+    <textarea id="d_body" style="min-height:70px;"></textarea>
+    <div class="colbox">
+      <p class="col-title">Left column</p>
+      <div class="grid2">
+        <div>
+          <label>CTA text</label>
+          <input type="text" id="d1_cta" placeholder="FH WORKSHOP">
+        </div>
+        <div>
+          <label>Image ID</label>
+          <input type="number" id="d1_img" placeholder="14096">
+        </div>
+      </div>
+      <label>Link</label>
+      <input type="url" id="d1_link" placeholder="https://get.ringringmarketing.com/…">
+    </div>
+    <div class="colbox">
+      <p class="col-title">Right column</p>
+      <div class="grid2">
+        <div>
+          <label>CTA text</label>
+          <input type="text" id="d2_cta" placeholder="CEM WORKSHOP">
+        </div>
+        <div>
+          <label>Image ID</label>
+          <input type="number" id="d2_img" placeholder="14097">
+        </div>
+      </div>
+      <label>Link</label>
+      <input type="url" id="d2_link" placeholder="https://cem.ringringmarketing.com/…">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="out-head"><span>Schedule class only</span> <button class="copy-btn" id="copyClass">Copy</button></h2>
+  <p style="font-size:11px;color:#8a93a3;margin:0 0 8px;">For hand-editing a row: paste this into the row's <strong>Extra class name</strong> (Row settings &rarr; General) in WPBakery. Uses the Start/End above &mdash; the row still needs the one-time scheduler snippet installed.</p>
+  <pre id="classOut" style="min-height:auto;">&mdash;</pre>
+</div>
+
+<div class="card">
+  <h2 class="out-head"><span>WPBakery row</span> <button class="copy-btn" id="copyRow">Copy</button></h2>
+  <pre id="rowOut">—</pre>
+  <button class="secondary" id="fillBtn" disabled>Fill the homepage (Classic Mode)</button>
+  <div class="err" id="fillMsg"></div>
+</div>
+
+<details>
+  <summary>One-time setup: the scheduler snippet (paste once per site)</summary>
+  <ol>
+    <li>On the homepage, add a WPBakery <strong>Raw HTML</strong> element (bottom of the page is fine) and paste the snippet below. Save once — you never touch it again.</li>
+    <li>It reads each promo row's <code>rrmS…</code>/<code>rrmE…</code> date classes and shows the row only inside that Eastern window (default-hidden, so no flash).</li>
+    <li>Then paste your promo row over the existing "Solo Promo" row and Update. Clear the cache once after updating.</li>
+  </ol>
+  <div class="out-head" style="margin-top:8px;"><span style="font-size:10px;color:#8a93a3;text-transform:uppercase;letter-spacing:.4px;">Scheduler</span> <button class="copy-btn" id="copySched">Copy</button></div>
+  <pre id="schedOut">—</pre>
+</details>
+
+<script src="sidepanel.js"></script>
+</body>
+</html>

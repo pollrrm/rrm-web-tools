@@ -493,8 +493,10 @@
 
     const out = [];
     function inlineHtml(el) {
-      // For inline content, return HTML but for whitelisted tags only
-      const allowed = new Set(['a','em','strong','i','b','u','br','sup','sub','span']);
+      // For inline content, return HTML but for whitelisted tags only.
+      // 'span' is intentionally excluded — it carries no meaning once styles are
+      // stripped, so any span is unwrapped (its text is kept, the tag dropped).
+      const allowed = new Set(['a','em','strong','i','b','u','br','sup','sub']);
       let html = '';
       el.childNodes.forEach(n => {
         if (n.nodeType === 3) {
@@ -527,8 +529,10 @@
               }
               return;
             }
-            // Generic inline tag — drop attributes for safety
-            html += `<${tag}>${inlineHtml(n)}</${tag}>`;
+            // Generic inline tag — drop attributes; skip the wrapper entirely
+            // if it has no real content, so we never emit empty <strong></strong> etc.
+            const inner = inlineHtml(n);
+            html += inner.trim() ? `<${tag}>${inner}</${tag}>` : inner;
           } else {
             // Skip unknown wrappers but keep their text
             html += inlineHtml(n);

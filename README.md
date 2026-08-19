@@ -10,10 +10,13 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 
 | Tool | Purpose | When to use |
 |------|---------|-------------|
+| [Homepage Promo Generator](#6-homepage-promo-generator) | Turn the promo email into a self-scheduling HTML block that auto-shows and auto-removes on its posting dates | Posting/removing homepage promos on RRM & SCMM |
+| [Promo Scheduler](#7-promo-scheduler) | Generate a CSS class + one-time script to show/hide any element during a date-time window (any site, any timezone) | Timed promos/banners on any client site |
 | [YT Thumbnail Downloader](#1-yt-thumbnail-downloader) | Bulk-extract YouTube thumbnails + post fields from the video posting task email | Weekly video blog posting (3-4 posts per niche site) |
 | [DOCX Batch → WordPress](#2-docx-batch--wordpress) | Convert a site's monthly ZIP of `.docx` articles into WordPress-ready posts with paired featured images and quality checks | Monthly blog batches per site |
 | [PDF Tools](#3-pdf-tools) | Two-tab tool: convert PDF pages to JPG, or edit a PDF's metadata (title, author, keywords, dates, etc.) | Pulling page-images out of brochures, or fixing a PDF's properties before posting |
-| [DOCX Link Extractor](#4-docx-link-extractor) | List every hyperlink in a Word doc, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
+| [DOCX / HTML Link Extractor](#4-docx--html-link-extractor) | List every hyperlink from a Word doc, an HTML file, or pasted content code, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
+| [Link Compare](#5-link-compare) | Compare all the links on two pages (source vs published) — live URL fetch or pasted HTML on either side — and flag missing, extra, and wrong-destination links | QA after publishing: confirm every intended link made it across and points to the right URL |
 
 All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
 
@@ -215,24 +218,25 @@ Powered by [pdf-lib](https://pdf-lib.js.org/). After upload, every editable fiel
 
 ---
 
-## 4. DOCX Link Extractor
+## 4. DOCX / HTML Link Extractor
 
 **File:** [`docx-link-extractor.html`](./docx-link-extractor.html)
 **SOP:** Ad-hoc — link auditing / migration
 
 ### What it does
 
-Drop a Word `.docx` and the tool will:
+Give it a source — a Word `.docx`, an `.html` file, or pasted page source / content code — and the tool will:
 
-- Unzip the file in-browser (no server upload) and parse the raw OOXML.
-- Pull every hyperlink — the **linked text** and the **actual URL** behind it — from the body, **headers, footers, and footnotes/endnotes**.
-- Tag each link **External**, **Email** (`mailto:`), or **Internal** (a bookmark/anchor within the doc).
+- For `.docx`: unzip the file in-browser (no server upload) and parse the raw OOXML.
+- For `.html` files or pasted markup: pull every `<a href>` link straight out of the source (entities like `&amp;` are decoded; href-less named anchors are skipped).
+- Pull every hyperlink — the **linked text** and the **actual URL** behind it. DOCX reads the body, **headers, footers, and footnotes/endnotes**.
+- Tag each link **External**, **Email** (`mailto:`), or **Internal** (a bookmark/anchor).
 - Show a running count of total links and unique URLs.
 - Filter the list by linked text or URL, **copy as Markdown** (`[text](url)`), **copy the table** (TSV, pastes straight into Sheets/Excel), or **download a CSV**.
 
 ### Workflow
 
-1. Open the tool. Click **Choose a .docx** or drag the file onto the drop zone.
+1. Open the tool. Either **Choose a .docx or .html file** (or drag it onto the drop zone), or paste page source / content code into the box and click **Extract links from pasted code**.
 2. The table fills in immediately. Use the filter box to find a specific link or domain.
 3. Export however you need it — Markdown for a quick reference, CSV/TSV for a spreadsheet audit.
 
@@ -264,6 +268,116 @@ Workflow: extract the doc's links → paste the current WP source → **Compare*
 - Field-code links report the URL reliably but their linked-text column is best-effort.
 - **Matching is by linked text.** If the WP anchor text was reworded so it no longer matches the doc, that link shows as *No match* and is left for you to handle — by design, nothing is changed unless the words line up.
 - URL comparison is exact, so `…/page` and `…/page/` (trailing slash) count as different and will be flagged for update.
+
+---
+
+## 5. Link Compare
+
+**File:** [`link-compare.html`](./link-compare.html)
+**SOP:** Ad-hoc — post-publish QA / link verification
+
+### What it does
+
+Compares the links on **two pages** and tells you whether the published page matches the source. Each side accepts either a **live URL** (fetched in-browser, falling back through CORS proxies when a site blocks direct requests) or **pasted HTML** (page-builder / Code-editor / View-Source markup). It then:
+
+- Extracts every `<a href>` — the linked text and the destination — from both sides. In pasted source it **also** reads links out of page-builder button shortcodes that have no rendered `<a>` tag: WPBakery (`link="url:…|title:…"`, `url=…`) and Elementor (`"url":"…"` JSON). These are tagged **shortcode** in the results.
+- Normalizes destinations before matching (configurable): treat `http`/`https` as the same, ignore `www.`, ignore trailing slash, ignore `#fragments`, optionally ignore `?query` strings, and include or exclude `mailto:` / `tel:` links.
+- Reports a plain-English verdict plus four breakdowns:
+  - **Missing on the published page** — links in the source that aren't on the page.
+  - **Same text, different destination** — the anchor text matches but it points somewhere else (the classic "right words, wrong link").
+  - **Extra on the page** — links on the page that aren't in the source (usually nav, footer, or related-post widgets).
+  - **Link health flags** — insecure `http`, staging/dev domains, empty (`#`) links, unresolved relative links, and malformed `mailto:` / `tel:`.
+- Lists the full link inventory for each side in a collapsible panel.
+
+### Workflow
+
+1. Open the tool. For each side pick **Live URL** (type the URL, click *Fetch*) or **Paste HTML** (paste the markup; add an optional base URL if the source uses relative links).
+2. Adjust the matching options if needed (defaults suit most WordPress QA).
+3. Click **Compare Links** and work down the verdict — check *Missing* and *Same text, different destination* first.
+
+### How it differs from the Link Extractor
+
+The **DOCX / HTML Link Extractor** is paste-only, matches links **by visible text**, and is built to *update* a WordPress source in place. **Link Compare** fetches or pastes **either** side, matches **by destination URL** (with normalization), and produces a bidirectional QA verdict — it reports rather than edits. Use the Extractor to fix links in a doc→WP handoff; use Link Compare to verify a published page against its source.
+
+### Notes / limitations
+
+- URL fetch relies on public CORS proxies for sites that block direct requests; if all fail, switch that side to **Paste HTML** (View Source → copy → paste).
+- On a **fetched** (rendered) page, only links present in the served HTML are seen — links injected later by JavaScript won't appear (rare for WordPress content links). Shortcode extraction applies to **pasted** builder source; a fetched page has already rendered its shortcodes into real `<a>` tags.
+- Matching is by normalized destination; "same text, different destination" is detected separately by anchor text, so a renamed-but-correct link still matches on URL.
+
+---
+
+## 6. Homepage Promo Generator
+
+**File:** [`promo-generator.html`](./promo-generator.html)
+**SOP:** Homepage promotion posting (RRM & SCMM)
+
+### What it does
+
+Turns a promo request email into a **single, self-contained HTML block** you paste once into the homepage. The block **schedules itself**: it stays hidden until the start date, shows through the end date, then removes itself — so nobody has to log back in to take the promo down.
+
+- Two templates:
+  - **Single Promo** — centered title, date line, description, banner image, and a CTA button (SCMM = red button, RRM = navy button). Used on RRM or SCMM.
+  - **Dual Promo (RRM)** — one shared headline + body, then two columns, each a banner image + a navy CTA button, each linking to its own URL.
+- One **posting schedule** (start/end date) drives show/hide. Dates are evaluated in **Eastern time** and are **inclusive** of both days.
+- Both the **image and the CTA button** link to the same URL (per the email spec).
+- **Live preview** rendered at homepage (desktop) width and scaled to fit, so the dual layout previews side-by-side regardless of window size.
+- **Copy block** button puts the finished markup on your clipboard.
+
+### Workflow
+
+1. Open the tool. Pick **Single** or **Dual**.
+2. Set the **posting schedule** (start and end dates from the email).
+3. Fill in the content fields. For the featured image, upload it to the WordPress Media Library first and paste its URL.
+4. Check the **live preview**.
+5. Click **Copy block**.
+6. In WordPress, edit the homepage with WPBakery, add (or open the existing) **Raw HTML** element where the promo sits, paste the block, and save. You can paste it as soon as the email arrives — it won't appear until the start date.
+
+### How the scheduling works
+
+The block ships hidden (`display:none`) with `data-start` / `data-end` attributes and a tiny inline script. On every page load the script reads "today" in `America/New_York` (via `Intl.DateTimeFormat`, locale `en-CA` → `YYYY-MM-DD`) and shows the promo only when today falls inside the window. It re-checks once a minute so a long-open tab flips at the boundary. Because the logic runs in the visitor's browser, **page caching never keeps a stale promo visible past its end date** — though a cache may briefly delay a promo *appearing* on its start day (clear the cache once if so).
+
+### Notes / limitations
+
+- Paste into a WPBakery **Raw HTML** element (it preserves the inline `<script>`). If a theme/plugin strips inline scripts from Raw HTML, put the block in Raw HTML and the `<script>` in a separate Raw JS element.
+- Styling uses `font-family: inherit`, so the promo picks up the homepage's fonts. Titles/buttons carry their own colors (navy `#1b3f9c`, red `#c1272d`).
+- The event date text ("Thursday, Aug. 13…") is display copy, separate from the posting schedule. In the Dual template the per-workshop dates live inside the banner images.
+- Dual currently uses **one shared schedule** for both columns. Per-column (staggered) scheduling — e.g. a live promo beside a teaser for an upcoming one — is a straightforward add if needed.
+- `javascript:` / `data:` / `vbscript:` links are neutralized to `#`.
+
+---
+
+## 7. Promo Scheduler
+
+**File:** [`promo-scheduler.html`](./promo-scheduler.html)
+**SOP:** Ad-hoc — timed show/hide of any element on any site
+
+### What it does
+
+A general-purpose, site-agnostic version of the scheduling logic: it doesn't build a promo, it just makes **any element appear and disappear on a date-time window**, with no plugin. You get two copy-paste outputs:
+
+1. A **CSS class** to add to the element's class list (`<name> <name>S<YYYYMMDDHHMMSS> <name>E<…>`).
+2. A **one-time `<style>`+`<script>` snippet** to paste once on the page, which hides those elements by default and reveals one only while "now" is inside its window.
+
+### Settings
+
+- **Timezone** — pin the window to one clock everywhere (Pacific, Mountain, Central, Eastern, UTC, London, Manila, Sydney), or **Visitor's local time** to run it in each viewer's own timezone. Baked into the snippet.
+- **CSS class name** — the marker class (default `timedPromo`); keep it unique per site to avoid collisions. Sanitized to a safe class/regex name.
+
+### Workflow
+
+1. Pick the timezone and (optionally) a class name.
+2. Set **Start**/**End** as `MM/DD/YYYY hh:mm:ss` (24-hour; am/pm and seconds optional; date-only = whole day; blank start = show from the beginning; blank end = never ends). Fields default to today's whole-day window in the chosen timezone.
+3. Watch the live **Now in this timezone** clock and the **status** line (Showing now / Hidden — starts… / window ended…). The **Test: show now (1 hr)** button sets a window that's live immediately for a quick end-to-end check.
+4. **Copy** the CSS class onto the element — WPBakery **Row/Element → Extra class name**, Elementor **Advanced → CSS Classes**, or a plain HTML `class="…"`.
+5. **Copy** the one-time snippet and paste it once anywhere on the page (a code area, WPBakery **Raw HTML**, or Elementor **HTML** widget). Clear the cache after publishing.
+
+### Notes
+
+- Multiple elements each schedule independently — give each its own window; overlapping windows show at once.
+- Client-side, so caching can't keep an expired element visible.
+- If you change the timezone or class name after installing the snippet, replace the installed snippet to match.
+- Same mechanism as the RRM Promo Helper extension's scheduler, but standalone and configurable for any site.
 
 ---
 
@@ -336,10 +450,13 @@ If you need an offline build for any tool, all dependencies above can be inlined
 ```
 rrm-web-tools/
 ├── index.html                       # Landing page linking to each tool
+├── promo-scheduler.html             # Promo Scheduler (any site / timezone)
+├── promo-generator.html             # Homepage Promo Generator
 ├── yt-thumbnail-downloader.html     # YT Thumbnail Downloader
 ├── docx-batch-to-wordpress.html     # DOCX Batch → WordPress
 ├── pdf-to-jpg.html                  # PDF → JPG converter
-├── docx-link-extractor.html         # DOCX Link Extractor
+├── docx-link-extractor.html         # DOCX / HTML Link Extractor
+├── link-compare.html                # Link Compare
 └── README.md                        # This file
 ```
 

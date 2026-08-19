@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homepage Promo Generator — RRM Web Support Tools</title>
+<script>
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  /* ---- Shared theme tokens ---- */
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1c1f27;
+    --border: #262a33;
+    --border-strong: #2a2f3a;
+    --text: #e6e6e6;
+    --text-muted: #b8bdc8;
+    --text-dim: #8a93a3;
+    --accent: #5b8def;
+    --accent-hover: #4a7ce0;
+    --ok: #6cd17b;
+    --ok-strong: #2d7a3e;
+    --error: #ff7a8a;
+    --purple: #c8a8ff;
+    --secondary: #2a2f3a;
+    --secondary-hover: #353b48;
+    --input-bg: #0f1115;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --border: #e1e4ea;
+    --border-strong: #cbd0d8;
+    --text: #1a1d24;
+    --text-muted: #475569;
+    --text-dim: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --ok-strong: #15803d;
+    --error: #b91c1c;
+    --purple: #6d28d9;
+    --secondary: #e2e8f0;
+    --secondary-hover: #cbd5e1;
+    --input-bg: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+
+  /* ---- Theme toggle ---- */
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0; transition: border-color .15s, color .15s, background .15s;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  /* ---- Page styles ---- */
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 1080px; margin: 30px auto; padding: 0 20px 60px;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    margin-bottom: 14px; transition: color .15s, border-color .15s;
+  }
+  .back-link:hover { color: var(--text); border-color: var(--accent); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 14px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-dim); margin: 0 0 14px;
+  }
+
+  /* Template tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 4px; }
+  .tab {
+    flex: 1; text-align: center; padding: 12px 10px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--border-strong);
+    border-radius: 8px; color: var(--text-muted); font-size: 14px; font-weight: 600;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .tab:hover { border-color: var(--accent); }
+  .tab.active { border-color: var(--accent); color: var(--text); background: var(--input-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tab small { display: block; font-weight: 400; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  label { display: block; font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; font-weight: 600; }
+  label .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
+  input[type="text"], input[type="url"], input[type="date"], textarea, select {
+    width: 100%; padding: 10px 12px; background: var(--input-bg);
+    border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text);
+    font-size: 14px; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+
+  .col-group {
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 4px 16px 16px; margin-top: 14px; background: var(--panel-2);
+  }
+  .col-group > .col-title {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--purple); font-weight: 700; margin: 14px 0 0;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 10px 18px; font-size: 14px; font-weight: 600; font-family: inherit;
+    transition: background .15s;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn.secondary { background: var(--secondary); color: var(--text); }
+  .btn.secondary:hover { background: var(--secondary-hover); }
+
+  .out-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+  .out-head h2 { margin: 0; }
+  #output {
+    width: 100%; min-height: 160px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; white-space: pre; overflow-x: auto;
+  }
+  .copied { color: var(--ok); font-size: 12px; font-weight: 600; opacity: 0; transition: opacity .15s; }
+  .copied.show { opacity: 1; }
+
+  .preview-scale {
+    position: relative; width: 100%; overflow: hidden;
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    background: #ffffff; min-height: 160px;
+  }
+  .preview-scale iframe { border: 0; display: block; background: #fff; }
+  .preview-note { font-size: 12px; color: var(--text-dim); margin: 0 0 10px; }
+  .preview-note strong { color: var(--text-muted); }
+
+  .msg { font-size: 13px; padding: 10px 12px; border-radius: 6px; margin-top: 10px; display: none; }
+  .msg.error { display: block; background: rgba(255,122,138,.12); color: var(--error); border: 1px solid rgba(255,122,138,.3); }
+  .msg.warn { display: block; background: rgba(200,168,255,.12); color: var(--purple); border: 1px solid rgba(200,168,255,.3); }
+
+  details.help { margin-top: 4px; }
+  details.help summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+  details.help ol { color: var(--text-muted); font-size: 13px; line-height: 1.7; padding-left: 20px; }
+  details.help code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  .field-note { font-size: 12px; color: var(--text-dim); margin: 6px 0 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="./index.html">&larr; All Tools</a>
+<h1>Homepage Promo Generator</h1>
+<p class="subtitle">Paste the promo email details &rarr; get a self-scheduling HTML block for the homepage. It auto-shows on the start date and removes itself after the end date &mdash; no plugin, no server logic, works on any site. Paste it into a WPBakery <strong>Raw HTML</strong> element.</p>
+
+<div class="card">
+  <div class="tabs">
+    <div class="tab active" data-tmpl="single">Single Promo<small>RRM or SCMM &mdash; one workshop</small></div>
+    <div class="tab" data-tmpl="dual">Dual Promo<small>RRM &mdash; two workshops side by side</small></div>
+  </div>
+</div>
+
+<!-- ============ SCHEDULE (shared) ============ -->
+<div class="card">
+  <h2>Posting Schedule</h2>
+  <div class="row">
+    <div>
+      <label>Start date <span class="hint">(first day the promo shows)</span></label>
+      <input type="date" id="start">
+    </div>
+    <div>
+      <label>End date <span class="hint">(last day it shows &mdash; hides after this day)</span></label>
+      <input type="date" id="end">
+    </div>
+  </div>
+  <p class="field-note">Evaluated in <strong>Eastern time</strong> and inclusive of both dates. You can paste the block early &mdash; it stays hidden until the start date, shows through the end date, then removes itself.</p>
+  <div class="msg" id="dateMsg"></div>
+</div>
+
+<!-- ============ SINGLE FIELDS ============ -->
+<div class="card" id="singleFields">
+  <h2>Single Promo Content</h2>
+  <div class="row">
+    <div>
+      <label>Brand accent</label>
+      <select id="s_brand">
+        <option value="scmm">SCMM &mdash; navy title, red button</option>
+        <option value="rrm">RRM &mdash; navy title, navy button</option>
+      </select>
+    </div>
+    <div>
+      <label>CTA button text</label>
+      <input type="text" id="s_cta" placeholder="Save My Spot">
+    </div>
+  </div>
+  <label>Title</label>
+  <input type="text" id="s_title" placeholder="Maximize Billable Hours: Mastering Home Care Website Conversions">
+  <label>Date line <span class="hint">(display text under the title)</span></label>
+  <input type="text" id="s_dateline" placeholder="Thursday, Aug. 13, at 2 p.m. Eastern">
+  <label>Short description</label>
+  <textarea id="s_desc" placeholder="Join Welton Hong for a free workshop..."></textarea>
+  <label>Featured image URL <span class="hint">(upload the banner to WP Media, paste its URL)</span></label>
+  <input type="url" id="s_img" placeholder="https://.../banner.jpg">
+  <label>Image alt text <span class="hint">(optional, for accessibility)</span></label>
+  <input type="text" id="s_alt" placeholder="Maximize Billable Hours workshop banner">
+  <label>Link <span class="hint">(applied to BOTH the image and the CTA button)</span></label>
+  <input type="url" id="s_link" placeholder="https://get.seniorcaremarketingmax.com/...">
+</div>
+
+<!-- ============ DUAL FIELDS ============ -->
+<div class="card hidden" id="dualFields">
+  <h2>Dual Promo Content <span class="hint" style="text-transform:none;letter-spacing:0;">(RRM)</span></h2>
+  <label>Headline <span class="hint">(shared, centered)</span></label>
+  <input type="text" id="d_headline" placeholder="Show Up Sooner. Start More Conversations.">
+  <label>Body <span class="hint">(shared paragraph under the headline)</span></label>
+  <textarea id="d_body" placeholder="Families make decisions in different moments..."></textarea>
+
+  <div class="col-group">
+    <p class="col-title">Left column</p>
+    <label>Featured image URL</label>
+    <input type="url" id="d1_img" placeholder="https://.../fh-banner.jpg">
+    <label>Image alt text <span class="hint">(optional)</span></label>
+    <input type="text" id="d1_alt" placeholder="Get More At-Need Calls with Google LSAs">
+    <div class="row">
+      <div>
+        <label>CTA button text</label>
+        <input type="text" id="d1_cta" placeholder="FH WORKSHOP">
+      </div>
+      <div>
+        <label>Link <span class="hint">(image + button)</span></label>
+        <input type="url" id="d1_link" placeholder="https://get.ringringmarketing.com/...">
+      </div>
+    </div>
+  </div>
+
+  <div class="col-group">
+    <p class="col-title">Right column</p>
+    <label>Featured image URL</label>
+    <input type="url" id="d2_img" placeholder="https://.../cem-banner.jpg">
+    <label>Image alt text <span class="hint">(optional)</span></label>
+    <input type="text" id="d2_alt" placeholder="Drive More Cemetery Preneed Conversations with Facebook Ads">
+    <div class="row">
+      <div>
+        <label>CTA button text</label>
+        <input type="text" id="d2_cta" placeholder="CEM WORKSHOP">
+      </div>
+      <div>
+        <label>Link <span class="hint">(image + button)</span></label>
+        <input type="url" id="d2_link" placeholder="https://cem.ringringmarketing.com/...">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PREVIEW ============ -->
+<div class="card">
+  <h2>Live Preview</h2>
+  <p class="preview-note">Rendered at homepage (desktop) width on a white background, scaled to fit. <strong>The preview always shows the promo</strong> so you can see it regardless of today's date &mdash; the real block obeys the schedule above.</p>
+  <div class="preview-scale" id="previewScale">
+    <iframe id="preview" title="Promo preview" scrolling="no"></iframe>
+  </div>
+</div>
+
+<!-- ============ OUTPUT ============ -->
+<div class="card">
+  <div class="out-head">
+    <h2>Block to paste</h2>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="copied" id="copied">Copied!</span>
+      <button class="btn" id="copyBtn" type="button">Copy block</button>
+    </div>
+  </div>
+  <textarea id="output" readonly spellcheck="false"></textarea>
+  <details class="help">
+    <summary>How to paste it into the homepage (WPBakery)</summary>
+    <ol>
+      <li>Edit the homepage with WPBakery (backend or frontend editor).</li>
+      <li>Add a <strong>Raw HTML</strong> element where the promo should sit (or open the existing promo's Raw HTML element to replace the old block).</li>
+      <li>Delete anything inside it, paste the copied block, and <strong>Save Changes</strong>.</li>
+      <li>Update the page. Done &mdash; it will appear/disappear on its own per the schedule. No need to come back to remove it.</li>
+      <li>If the promo doesn't show up when it should, your caching may be serving an old page &mdash; clear the site/page cache once. (The show/hide logic itself runs in the browser, so cache never keeps a stale promo <em>visible</em> past its end date.)</li>
+    </ol>
+  </details>
+</div>
+
+<script>
+/* ============================================================
+   Homepage Promo Generator
+   Builds a self-contained, self-scheduling promo block.
+   ============================================================ */
+
+var NAVY = '#1b3f9c';
+var NAVY_DARK = '#0f2657';
+var RED = '#c1272d';
+
+function $(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+/* attribute-safe URL: block javascript: and other script schemes */
+function safeUrl(u){
+  u = String(u == null ? '' : u).trim();
+  if (/^\s*javascript:/i.test(u) || /^\s*data:/i.test(u) || /^\s*vbscript:/i.test(u)) return '#';
+  return esc(u);
+}
+
+var state = { tmpl: 'single' };
+
+/* ---------- scoped CSS for the block ---------- */
+function blockCss(){
+  return [
+    '.rrm-promo{box-sizing:border-box;font-family:inherit;color:#333;max-width:1180px;margin:0 auto;padding:26px 16px;text-align:center;}',
+    '.rrm-promo *{box-sizing:border-box;}',
+    '.rrm-promo .rrmp-title{color:' + NAVY + ';font-weight:800;font-style:italic;font-size:30px;line-height:1.22;margin:0 auto 18px;max-width:960px;}',
+    '.rrm-promo .rrmp-dateline{display:flex;align-items:center;gap:16px;justify-content:center;font-size:18px;color:#333;max-width:720px;margin:0 auto 20px;}',
+    '.rrm-promo .rrmp-dateline::before,.rrm-promo .rrmp-dateline::after{content:"";flex:1 1 auto;height:1px;background:' + NAVY + ';opacity:.55;}',
+    '.rrm-promo .rrmp-desc{font-size:17px;line-height:1.6;max-width:900px;margin:0 auto 24px;}',
+    '.rrm-promo .rrmp-imgwrap{display:block;max-width:940px;margin:0 auto 22px;}',
+    '.rrm-promo .rrmp-imgwrap img{display:block;width:100%;height:auto;border-radius:4px;}',
+    '.rrm-promo .rrmp-cta{display:inline-block;color:#fff;font-weight:700;font-size:18px;text-decoration:none;padding:14px 36px;border-radius:8px;transition:opacity .15s;}',
+    '.rrm-promo .rrmp-cta:hover{opacity:.9;}',
+    /* dual */
+    '.rrm-promo .rrmp-body{font-size:17px;line-height:1.6;max-width:1120px;margin:0 auto 26px;}',
+    '.rrm-promo .rrmp-cols{display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1180px;margin:0 auto;}',
+    '.rrm-promo .rrmp-col{display:flex;flex-direction:column;align-items:center;gap:20px;}',
+    '.rrm-promo .rrmp-col a.rrmp-imglink{display:block;width:100%;}',
+    '.rrm-promo .rrmp-col img{display:block;width:100%;height:auto;border-radius:4px;}',
+    '.rrm-promo .rrmp-btn{display:inline-flex;align-items:center;gap:12px;background:linear-gradient(180deg,' + NAVY + ' 0%,' + NAVY_DARK + ' 100%);color:#fff;font-weight:700;font-size:17px;letter-spacing:.06em;text-decoration:none;padding:15px 46px;border-radius:6px;transition:opacity .15s;}',
+    '.rrm-promo .rrmp-btn:hover{opacity:.92;}',
+    '.rrm-promo .rrmp-btn svg{width:20px;height:20px;flex:0 0 auto;}',
+    '@media (max-width:760px){.rrm-promo .rrmp-cols{grid-template-columns:1fr;gap:34px;}.rrm-promo .rrmp-title{font-size:24px;}.rrm-promo .rrmp-dateline{font-size:16px;}}'
+  ].join('');
+}
+
+var ARROW_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>';
+
+/* ---------- build the visible inner content ---------- */
+function buildInner(){
+  var css = '<style>' + blockCss() + '</style>';
+  if (state.tmpl === 'single'){
+    var brand = $('s_brand').value;
+    var ctaBg = brand === 'rrm' ? ('linear-gradient(180deg,' + NAVY + ' 0%,' + NAVY_DARK + ' 100%)') : RED;
+    var title = esc($('s_title').value) || 'Promo title';
+    var dateline = esc($('s_dateline').value);
+    var desc = esc($('s_desc').value);
+    var img = $('s_img').value.trim();
+    var alt = esc($('s_alt').value);
+    var cta = esc($('s_cta').value) || 'Learn More';
+    var link = safeUrl($('s_link').value);
+
+    var h = '<div class="rrmp-title">' + title + '</div>';
+    if (dateline) h += '<div class="rrmp-dateline">' + dateline + '</div>';
+    if (desc) h += '<p class="rrmp-desc">' + desc + '</p>';
+    if (img) {
+      h += '<a class="rrmp-imgwrap" href="' + link + '"><img src="' + esc(img.replace(/^javascript:/i,'')) + '" alt="' + alt + '"></a>';
+    }
+    h += '<div><a class="rrmp-cta" href="' + link + '" style="background:' + ctaBg + ';">' + cta + '</a></div>';
+    return css + h;
+  } else {
+    var headline = esc($('d_headline').value) || 'Headline';
+    var body = esc($('d_body').value);
+    var h2 = '<div class="rrmp-title">' + headline + '</div>';
+    if (body) h2 += '<p class="rrmp-body">' + body + '</p>';
+    h2 += '<div class="rrmp-cols">' + dualCol('d1') + dualCol('d2') + '</div>';
+    return css + h2;
+  }
+}
+
+function dualCol(prefix){
+  var img = $(prefix + '_img').value.trim();
+  var alt = esc($(prefix + '_alt').value);
+  var cta = esc($(prefix + '_cta').value) || 'Register';
+  var link = safeUrl($(prefix + '_link').value);
+  var out = '<div class="rrmp-col">';
+  if (img) out += '<a class="rrmp-imglink" href="' + link + '"><img src="' + esc(img) + '" alt="' + alt + '"></a>';
+  out += '<a class="rrmp-btn" href="' + link + '">' + ARROW_SVG + '<span>' + cta + '</span></a>';
+  out += '</div>';
+  return out;
+}
+
+/* ---------- the scheduling script (runs on the live site) ---------- */
+function scheduleScript(){
+  var s = ''
+    + '(function(){'
+    + 'function d(el){'
+      + 'var a=el.getAttribute("data-start"),b=el.getAttribute("data-end");'
+      + 'var now=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());'
+      + 'return (!a||now>=a)&&(!b||now<=b);'
+    + '}'
+    + 'function run(){'
+      + 'var els=document.querySelectorAll("[data-rrm-promo]");'
+      + 'for(var i=0;i<els.length;i++){els[i].style.display=d(els[i])?"":"none";}'
+    + '}'
+    + 'run();setInterval(run,60000);'
+    + '})();';
+  return s;
+}
+
+/* ---------- assemble the full pasteable block ---------- */
+function buildBlock(){
+  var start = $('start').value;
+  var end = $('end').value;
+  var label = state.tmpl === 'single' ? 'Single' : 'Dual';
+  var comment = '<!-- RRM Homepage Promo (' + label + ') :: shows ' + (start||'?') + ' through ' + (end||'?') + ' Eastern :: generated with promo-generator -->';
+  var wrap = '<div class="rrm-promo" data-rrm-promo data-start="' + esc(start) + '" data-end="' + esc(end) + '" style="display:none">'
+    + buildInner()
+    + '</div>';
+  var scr = '<scr' + 'ipt>' + scheduleScript() + '<\/scr' + 'ipt>';
+  return comment + '\n' + wrap + '\n' + scr;
+}
+
+/* ---------- render preview (always visible, at desktop width, scaled to fit) ---------- */
+var LOGICAL_W = 1140; /* homepage-ish content width so dual shows side by side */
+function renderPreview(){
+  var doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<style>html,body{margin:0;}body{width:' + LOGICAL_W + 'px;padding:24px 16px;background:#fff;'
+    + 'font-family:-apple-system,\'Segoe UI\',system-ui,Arial,sans-serif;}</style>'
+    + '</head><body>'
+    + '<div class="rrm-promo">' + buildInner() + '</div>'
+    + '</body></html>';
+  $('preview').srcdoc = doc;
+}
+function scalePreview(){
+  var pv = $('preview'), wrap = $('previewScale');
+  var d = pv.contentDocument;
+  if (!d || !d.body) return;
+  pv.style.width = LOGICAL_W + 'px';
+  pv.style.height = 'auto';
+  var h = d.body.scrollHeight;
+  pv.style.height = h + 'px';
+  var scale = Math.min(1, wrap.clientWidth / LOGICAL_W);
+  pv.style.transformOrigin = 'top left';
+  pv.style.transform = 'scale(' + scale + ')';
+  wrap.style.height = Math.ceil(h * scale) + 'px';
+}
+
+/* ---------- validation ---------- */
+function validateDates(){
+  var start = $('start').value, end = $('end').value, msg = $('dateMsg');
+  msg.className = 'msg';
+  msg.textContent = '';
+  if (start && end && end < start){
+    msg.className = 'msg error';
+    msg.textContent = 'End date is before the start date — the promo would never show.';
+    return false;
+  }
+  if (!start || !end){
+    msg.className = 'msg warn';
+    msg.textContent = 'Set both dates so the block knows when to show and hide.';
+  }
+  return true;
+}
+
+/* ---------- refresh everything ---------- */
+function refresh(){
+  validateDates();
+  renderPreview();
+  $('output').value = buildBlock();
+}
+
+/* ---------- wiring ---------- */
+function switchTemplate(t){
+  state.tmpl = t;
+  var tabs = document.querySelectorAll('.tab');
+  for (var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tmpl') === t); }
+  $('singleFields').classList.toggle('hidden', t !== 'single');
+  $('dualFields').classList.toggle('hidden', t !== 'dual');
+  refresh();
+}
+
+document.addEventListener('click', function(e){
+  var tab = e.target.closest ? e.target.closest('.tab') : null;
+  if (tab){ switchTemplate(tab.getAttribute('data-tmpl')); }
+});
+
+document.addEventListener('input', function(e){
+  if (e.target.matches('input, textarea, select')) refresh();
+});
+
+$('copyBtn').addEventListener('click', function(){
+  var ta = $('output');
+  ta.select();
+  var done = function(){
+    var c = $('copied'); c.classList.add('show');
+    setTimeout(function(){ c.classList.remove('show'); }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(done, function(){ document.execCommand('copy'); done(); });
+  } else { document.execCommand('copy'); done(); }
+});
+
+/* re-scale the preview whenever the iframe reloads, its images load, or the window resizes */
+(function(){
+  var pv = $('preview');
+  pv.addEventListener('load', function(){
+    scalePreview();
+    var imgs = pv.contentDocument ? pv.contentDocument.images : [];
+    for (var i = 0; i < imgs.length; i++){
+      if (!imgs[i].complete) imgs[i].addEventListener('load', scalePreview);
+      imgs[i].addEventListener('error', scalePreview);
+    }
+  });
+  window.addEventListener('resize', scalePreview);
+})();
+
+/* ---------- prefill with the two real examples so the preview shows on load ---------- */
+(function prefill(){
+  $('start').value = '2026-07-30';
+  $('end').value = '2026-08-12';
+  $('s_brand').value = 'scmm';
+  $('s_cta').value = 'Save My Spot';
+  $('s_title').value = 'Maximize Billable Hours: Mastering Home Care Website Conversions';
+  $('s_dateline').value = 'Thursday, Aug. 13, at 2 p.m. Eastern';
+  $('s_desc').value = 'Join Welton Hong for a free workshop designed for home care agencies who want their websites to support more consistent inquiries, smoother next steps and steady private-pay growth.';
+  $('s_link').value = 'https://get.seniorcaremarketingmax.com/sign-up-workshop-maximize-billable-hours-mastering-home-care-website-conversions?utm_source=scmm&utm_medium=home-page&utm_campaign=workshop&utm_content=hc-maximize-billable-hours-mastering-home-care-website-conversions';
+
+  $('d_headline').value = 'Show Up Sooner. Start More Conversations.';
+  $('d_body').value = 'Families make decisions in different moments. Some search Google because they need help now. Others see Facebook while thinking about cemetery plans for later. That’s why Welton Hong is hosting two focused workshops: one to help funeral homes get more at-need calls with Google Local Services Ads and one to help cemeteries drive more preneed conversations with Facebook Ads. Choose the session that fits your organization and get practical guidance to increase visibility, build trust and create more opportunities.';
+  $('d1_cta').value = 'FH WORKSHOP';
+  $('d1_link').value = 'https://get.ringringmarketing.com/sign-up-fh-get-more-at-need-calls-with-google-lsas-pg?utm_source=rrm&utm_medium=home-page&utm_campaign=workshop&utm_content=fh-ws-get-more-at-need-calls-with-google-lsas';
+  $('d2_cta').value = 'CEM WORKSHOP';
+  $('d2_link').value = 'https://cem.ringringmarketing.com/sign-up-cem-drive-more-cemetery-preneed-conversations-with-facebook-ads-pg?utm_source=rrm&utm_medium=home-page&utm_campaign=workshop&utm_content=cem-ws-drive-more-cemetery-preneed-conversations-with-facebook-ads';
+
+  refresh();
+})();
+</script>
+
+<!-- Theme toggle -->
+<script>
+  (function() {
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme');
+    btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML =
+      '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+      '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      setTheme(cur === 'light' ? 'dark' : 'light');
+    });
+    document.body.appendChild(btn);
+  })();
+</script>
+
+</body>
+</html>

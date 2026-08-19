@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DOCX Link Extractor — RRM Web Support Tools</title>
+<title>DOCX / HTML Link Extractor — RRM Web Support Tools</title>
 <script>
   // Apply saved theme before paint to avoid flash.
   (function() {
@@ -103,6 +103,32 @@
   .drop .hint { color: var(--text-dim); font-size: 12px; margin-top: 6px; }
   .drop strong { color: var(--accent); }
   input[type=file] { display: none; }
+
+  .paste-src { margin-top: 16px; }
+  .paste-or {
+    display: flex; align-items: center; gap: 12px;
+    color: var(--text-dim); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .06em;
+    margin: 0 0 12px;
+  }
+  .paste-or::before, .paste-or::after {
+    content: ""; flex: 1; height: 1px; background: var(--border);
+  }
+  #pasteInput {
+    width: 100%;
+    min-height: 96px;
+    resize: vertical;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 11px 12px;
+  }
+  #pasteInput:focus { outline: none; border-color: var(--accent); }
+  .paste-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 
   .bar {
     display: none;
@@ -254,15 +280,24 @@
 <a class="back" href="./index.html">← All Tools</a>
 
 <header>
-  <h1>DOCX Link Extractor</h1>
-  <p class="subtitle">Drop a Word <code>.docx</code> and get every hyperlink — the linked words and the actual URL behind them. Reads the body, headers, footers, and footnotes. Runs entirely in your browser; nothing is uploaded.</p>
+  <h1>DOCX / HTML Link Extractor</h1>
+  <p class="subtitle">Drop a Word <code>.docx</code> or an <code>.html</code> file — or paste page source / content code below — and get every hyperlink: the linked words and the actual URL behind them. DOCX reads the body, headers, footers, and footnotes. Runs entirely in your browser; nothing is uploaded.</p>
 </header>
 
 <div class="drop" id="drop">
-  <p><strong>Choose a .docx</strong> or drag it here</p>
-  <p class="hint">.docx only (not .doc). Your file never leaves this page.</p>
+  <p><strong>Choose a .docx or .html file</strong> or drag it here</p>
+  <p class="hint">.docx or .html/.htm (not .doc). Your file never leaves this page.</p>
 </div>
-<input type="file" id="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+<input type="file" id="file" accept=".docx,.html,.htm,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/html">
+
+<div class="paste-src">
+  <div class="paste-or"><span>or paste content code</span></div>
+  <textarea id="pasteInput" placeholder="Paste HTML / WPBakery / page source code here to extract its links…"></textarea>
+  <div class="paste-bar">
+    <button class="primary" id="pasteBtn">Extract links from pasted code</button>
+    <span class="stat" id="pasteHint">Pulls every &lt;a href&gt; link out of the pasted markup.</span>
+  </div>
+</div>
 
 <div class="bar" id="bar">
   <span class="filename" id="fname"></span>
@@ -346,6 +381,18 @@
     if (ev.dataTransfer.files && ev.dataTransfer.files[0]) handleFile(ev.dataTransfer.files[0]);
   });
 
+  // Paste-in-code source
+  var pasteInput = document.getElementById('pasteInput');
+  document.getElementById('pasteBtn').addEventListener('click', function () {
+    var raw = pasteInput.value;
+    if (!raw.trim()) {
+      showError('Paste some HTML / page source code first, then click Extract.');
+      return;
+    }
+    fname.textContent = 'Pasted content';
+    parseHtmlSource(raw, 'Pasted');
+  });
+
   function showError(msg) {
     errEl.textContent = msg;
     errEl.classList.add('show');
@@ -354,8 +401,16 @@
   function handleFile(file) {
     errEl.classList.remove('show');
     emptyEl.classList.remove('show');
+    if (/\.html?$/i.test(file.name)) {
+      fname.textContent = file.name;
+      var htmlReader = new FileReader();
+      htmlReader.onload = function () { parseHtmlSource(htmlReader.result, file.name); };
+      htmlReader.onerror = function () { showError('Could not read the file.'); };
+      htmlReader.readAsText(file);
+      return;
+    }
     if (!/\.docx$/i.test(file.name)) {
-      showError('That looks like "' + file.name + '". This tool needs a .docx file. If you have a .doc, open it in Word and "Save As" .docx first.');
+      showError('That looks like "' + file.name + '". This tool needs a .docx or .html file. If you have a .doc, open it in Word and "Save As" .docx first.');
       return;
     }
     fname.textContent = file.name;
@@ -363,6 +418,31 @@
     reader.onload = function () { parseDocx(reader.result); };
     reader.onerror = function () { showError('Could not read the file.'); };
     reader.readAsArrayBuffer(file);
+  }
+
+  // ---- HTML / pasted-code source ----
+  // Populates the same links[] used by the DOCX path, then renders.
+  function parseHtmlSource(html, label) {
+    errEl.classList.remove('show');
+    emptyEl.classList.remove('show');
+    links = [];
+    extractLinksFromHtml(html, label || 'HTML');
+    render();
+  }
+
+  function extractLinksFromHtml(html, source) {
+    var re = /(<a\b[^>]*>)([\s\S]*?)(<\/a\s*>)/gi;
+    var m;
+    while ((m = re.exec(html)) !== null) {
+      var openTag = m[1];
+      var hrefM = /href\s*=\s*("([^"]*)"|'([^']*)')/i.exec(openTag);
+      if (!hrefM) continue; // named anchors / no href — skip
+      var rawHref = hrefM[2] != null ? hrefM[2] : hrefM[3];
+      var url = decodeEntities(rawHref).trim();
+      if (!url) continue;
+      var text = stripTags(m[2]) || '(no visible text)';
+      links.push({ text: text, url: url, type: classify(url), source: source });
+    }
   }
 
   // ---- DOCX parsing ----
