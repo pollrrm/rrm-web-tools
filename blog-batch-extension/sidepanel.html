@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RRM Blog Batch Helper</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #0f1115;
+    color: #e6e6e6;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 14px;
+  }
+  h1 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scope {
+    font-size: 10px;
+    background: #2a2f3a;
+    color: #6cd17b;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .subtitle { color: #8a93a3; font-size: 11px; margin: 0 0 14px; }
+
+  .status-line {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #8a93a3;
+  }
+  .status-line.ok { border-color: #2d7a3e; color: #6cd17b; }
+  .status-line.warn { border-color: #c08a3e; color: #ffb04d; }
+
+  .topic-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .topic-row label { color: #8a93a3; font-size: 11px; flex-shrink: 0; }
+  .topic-row select {
+    flex: 1;
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    color: #e6e6e6;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .topic-row select:focus { outline: none; border-color: #6cd17b; }
+
+  button {
+    background: #5b8def; color: white; border: 0;
+    padding: 8px 14px; border-radius: 6px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #4a7ce0; }
+  button:disabled { background: #2a2f3a; color: #6a7180; cursor: not-allowed; }
+  button.fill-btn { background: #6cd17b; color: #0f1115; }
+  button.fill-btn:hover { background: #58c168; }
+  button.fill-btn.busy { background: #4a4a4a; color: #e6e6e6; cursor: progress; }
+  button.ghost { background: transparent; border: 1px solid #2a2f3a; color: #b8bdc8; }
+  button.ghost:hover { background: #1c2230; border-color: #4a5163; color: #fff; }
+
+  .dropzone {
+    border: 2px dashed #2a2f3a; border-radius: 8px;
+    padding: 20px 14px; text-align: center; background: #181b22;
+    cursor: pointer; transition: border-color .15s, background .15s;
+    margin-bottom: 10px;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: #6cd17b; background: #1c2230; }
+  .dropzone .big { font-size: 12px; color: #e6e6e6; margin-bottom: 4px; }
+  .dropzone .small { font-size: 10px; color: #8a93a3; }
+  .dropzone input[type=file] { display: none; }
+  .dropzone .pick {
+    display: inline-block; margin-top: 8px; padding: 5px 10px;
+    background: #6cd17b; color: #0f1115; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .err { color: #ff7676; font-size: 11px; margin-top: 6px; }
+
+  /* ---- Batch queue ---- */
+  .batch-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px; gap: 8px;
+  }
+  .batch-head .counter { font-size: 12px; font-weight: 600; }
+  .batch-head .clear { font-size: 10px; color: #8a93a3; cursor: pointer; text-decoration: underline; background: none; border: 0; padding: 0; }
+  .batch-head .clear:hover { color: #ff7676; }
+
+  /* status rail — one dot chip per post */
+  .rail { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .rail .chip {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px;
+    border: 1px solid #2a2f3a; color: #8a93a3; cursor: pointer; background: #181b22;
+    display: flex; align-items: center; gap: 4px; user-select: none;
+  }
+  .rail .chip.current { border-color: #5b8def; color: #cddcff; }
+  .rail .chip.filled    { border-color: #2d7a3e; color: #6cd17b; }
+  .rail .chip.scheduled { border-color: #2d7a3e; color: #6cd17b; }
+  .rail .chip.skipped   { border-color: #6a7180; color: #6a7180; text-decoration: line-through; }
+  .rail .chip.error     { border-color: #a33; color: #ff7676; }
+
+  .card {
+    background: #181b22; border: 1px solid #262a33; border-radius: 8px;
+    padding: 10px; margin-bottom: 10px;
+  }
+  .card .title { font-size: 12px; font-weight: 600; margin: 0 0 4px; word-break: break-word; }
+  .card .meta { font-size: 10px; color: #8a93a3; margin-bottom: 8px; }
+  .card .thumb {
+    width: 100%; max-height: 120px; object-fit: cover; border-radius: 6px;
+    border: 1px solid #2a2f3a; margin-bottom: 8px; display: block;
+  }
+
+  .field {
+    background: #0f1115; border: 1px solid #2a2f3a; border-radius: 4px;
+    margin-bottom: 6px; padding: 5px 7px; font-size: 10px;
+  }
+  .field .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+  .field .label { color: #8a93a3; text-transform: uppercase; font-size: 9px; letter-spacing: 0.4px; }
+  .field .value { color: #e6e6e6; word-break: break-word; }
+  .copy-btn {
+    background: #2a2f3a; color: #b8bdc8; padding: 2px 8px; font-size: 9px;
+    border: 0; border-radius: 3px; cursor: pointer; font-weight: 600;
+  }
+  .copy-btn:hover { background: #353b48; color: #fff; }
+  .copy-btn.copied { background: #2d7a3e; color: #fff; }
+
+  .content-block {
+    background: #0f1115; border: 1px solid #2a2f3a; border-radius: 4px;
+    margin-bottom: 6px; overflow: hidden;
+  }
+  .content-block .head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 7px; border-bottom: 1px solid #2a2f3a;
+    font-size: 9px; color: #8a93a3; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .content-block pre {
+    margin: 0; padding: 7px 8px; white-space: pre-wrap; word-break: break-word;
+    max-height: 140px; overflow-y: auto;
+    font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+    font-size: 10px; line-height: 1.45; color: #e6e6e6;
+  }
+
+  /* warnings */
+  .warnings { margin-bottom: 8px; }
+  .warnings > summary {
+    list-style: none; cursor: pointer; font-size: 10px; font-weight: 600;
+    color: #ffb04d; padding: 4px 0;
+  }
+  .warnings > summary::-webkit-details-marker { display: none; }
+  .warnings .w {
+    background: #0f1115; border-left: 3px solid #c08a3e; border-radius: 3px;
+    padding: 5px 7px; margin-bottom: 4px; font-size: 10px; color: #d8c08a;
+  }
+  .warnings .w.err { border-left-color: #a33; color: #ff9a9a; }
+  .warnings .w .code { color: #8a93a3; font-size: 9px; text-transform: uppercase; letter-spacing: .4px; }
+
+  .nav-row { display: flex; gap: 6px; margin-top: 4px; }
+  .nav-row button { flex: 1; }
+
+  .empty { text-align: center; color: #8a93a3; font-size: 11px; padding: 20px 0; }
+  .spinner {
+    display: inline-block; width: 10px; height: 10px;
+    border: 2px solid rgba(0,0,0,0.3); border-top-color: #0f1115;
+    border-radius: 50%; animation: spin .9s linear infinite;
+    vertical-align: -1px; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>RRM Blog Batch <span class="scope" id="siteScope">—</span></h1>
+<p class="subtitle" id="subtitle">Pick a site + topic, drop the monthly <strong>.zip</strong> (or a single <strong>.docx</strong>), then step through filling each post.</p>
+
+<div class="topic-row">
+  <label for="siteSelect">Site:</label>
+  <select id="siteSelect"></select>
+</div>
+<div class="topic-row">
+  <label for="topicSelect">Topic:</label>
+  <select id="topicSelect"></select>
+</div>
+
+<div id="tabStatus" class="status-line">Checking active tab…</div>
+
+<label class="dropzone" id="drop">
+  <div class="big">Drop the monthly ZIP here</div>
+  <div class="small">or click to pick a .zip (all the month's posts) or a single .docx</div>
+  <div class="pick">Choose file</div>
+  <input type="file" id="file" accept=".zip,.docx">
+</label>
+<div id="errMsg" class="err"></div>
+
+<div id="results"></div>
+
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/mammoth.browser.min.js"></script>
+<script src="sidepanel.js"></script>
+
+</body>
+</html>
