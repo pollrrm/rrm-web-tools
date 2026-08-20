@@ -34,7 +34,7 @@ Both flows route through this extension's `content-wp.js`. They write the same f
 | Field | Source | WordPress target |
 |---|---|---|
 | Title | First bold paragraph after the date hint | `#title` |
-| Publish Date | `M.D` line at top of the doc / filename | Classic Editor mm/jj/aa/hh/mn — **5:00 AM** |
+| Publish Date | `M.D` line at top of the doc / filename | Classic Editor mm/jj/aa/hh/mn — **4:00 AM** |
 | Content | Body HTML (H2 promotion from "H Tags Used") | `#content` textarea + TinyMCE background sync |
 | SEO Title | `SEO Title Tag: …` line | Yoast Draft.js SEO Title field |
 | Meta Description | `Meta Description: …` line | Yoast Draft.js Meta Description field |

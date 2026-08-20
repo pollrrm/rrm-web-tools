@@ -214,12 +214,72 @@
     margin-right: 6px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* "What this does" info panel */
+  .info {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .info > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #b8bdc8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .info > summary::-webkit-details-marker { display: none; }
+  .info > summary::before { content: "▸"; color: #6cd17b; font-size: 10px; }
+  .info[open] > summary::before { content: "▾"; }
+  .info > summary:hover { color: #fff; }
+  .info-body {
+    padding: 4px 12px 12px;
+    font-size: 11px;
+    color: #b8bdc8;
+    border-top: 1px solid #262a33;
+  }
+  .info-body dl { margin: 8px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+  .info-body dt { color: #8a93a3; white-space: nowrap; }
+  .info-body dd { margin: 0; color: #e6e6e6; }
+  .info-body dd strong { color: #6cd17b; font-weight: 600; }
+  .info-body ul { margin: 8px 0 0; padding-left: 16px; }
+  .info-body li { margin-bottom: 2px; }
+  .info-body .note { margin-top: 8px; color: #8a93a3; font-size: 10px; }
 </style>
 </head>
 <body>
 
 <h1>RRM Blog Helper <span class="scope" id="siteScope">—</span></h1>
 <p class="subtitle">Pick a site + topic, drop a <strong>.docx</strong>, then click Fill on the active New Post page.</p>
+
+<details class="info">
+  <summary>What this does</summary>
+  <div class="info-body">
+    Parses a blog post <strong>.docx</strong> and auto-fills the fields on the WordPress
+    <strong>Classic Editor</strong> New Post page you have open, so you only review and publish.
+    <dl>
+      <dt>Publish date</dt><dd>the date in the doc, set to <strong>4:00&nbsp;AM</strong></dd>
+      <dt>Author</dt><dd><strong>Welton Hong</strong></dd>
+      <dt>Category</dt><dd>from the selected Topic (e.g. Blogs; Funeral&nbsp;→&nbsp;Blogs on RRM)</dd>
+    </dl>
+    Fields it fills:
+    <ul>
+      <li>Title</li>
+      <li>Content (HTML body, with H2s)</li>
+      <li>SEO Title — Yoast</li>
+      <li>Meta Description — Yoast</li>
+      <li>Category — from the Topic above</li>
+      <li>Publish date &amp; time</li>
+    </ul>
+    <div class="note">Classic Editor only. Nothing is published automatically — review each field, then hit Publish/Schedule yourself.</div>
+  </div>
+</details>
 
 <div class="topic-row">
   <label for="siteSelect">Site:</label>

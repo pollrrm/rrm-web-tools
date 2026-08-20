@@ -449,7 +449,7 @@ async function fillActiveTab(btn) {
     categories: catPath,
     primaryCategory: selectedTopic ? selectedTopic.primaryCategory : null,
     publishDate: (p.dateMM && p.dateDD)
-      ? { year, month: p.dateMM, day: p.dateDD, hour: 5, minute: 0 }
+      ? { year, month: p.dateMM, day: p.dateDD, hour: 4, minute: 0 }
       : null
   };
 

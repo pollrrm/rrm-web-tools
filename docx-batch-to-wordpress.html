@@ -27,7 +27,7 @@
     --accent-dim: #2b4a8c;
     --accent-soft: #182234;
     --ok: #4ade80;
-    --warn: #ffb347;
+    --warn: #f5c542;
     --error: #ff5d6c;
     --thumb-bg: #0b0d12;
     --issue-bg: #0b0d12;
@@ -46,8 +46,8 @@
     --accent-dim: #bfd2f7;
     --accent-soft: #dbeafe;
     --ok: #15803d;
-    --warn: #b45309;
-    --error: #b91c1c;
+    --warn: #7a6a00;
+    --error: #dc2626;
     --thumb-bg: #f1f5f9;
     --issue-bg: #f8fafc;
     --issue-ctx-bg: #f1f5f9;
@@ -302,7 +302,7 @@
     font-weight: 600;
   }
   .badge.error { background: rgba(255, 93, 108, 0.15); color: var(--error); }
-  .badge.warn  { background: rgba(255, 179, 71, 0.15);  color: var(--warn); }
+  .badge.warn  { background: rgba(245, 197, 66, 0.16);  color: var(--warn); }
   .badge.ok    { background: rgba(74, 222, 128, 0.15);  color: var(--ok); }
   .badge.dim   { background: rgba(138, 147, 164, .15); color: var(--muted); }
 
@@ -734,6 +734,10 @@ function parseFromHtml(html, filename) {
   }
   const bodyHtml = stripWordJunkAnchors(outBlocks.join("\n"));
 
+  // Raw source body (pre-transform) — kept so the Content Parity check can
+  // compare the published/edited HTML against what the document actually said.
+  const sourceBodyHtml = blocks.slice(bodyStart, bodyEnd).join("\n");
+
   // Date formatting
   let formattedDate = dateText;
   let dateMM = null, dateDD = null;
@@ -762,6 +766,7 @@ function parseFromHtml(html, filename) {
     seoTitle,
     metaDescription,
     bodyHtml,
+    sourceBodyHtml,
     h2Count: h2Texts.length
   };
 }
@@ -920,6 +925,194 @@ function checkConsistency(html) {
     });
   });
 
+  return issues;
+}
+
+/* ------------------------------------------------------------------
+   Structure & pattern consistency.
+   Blog posts here follow a repeating per-section shape — typically:
+     H2  →  intro paragraph  →  "Here's how…:" lead-in  →  bullet list
+     (each bullet starting with a bold lead-in phrase)  →  bold "Quick Tip: …"
+   Rather than hardcode that shape, we LEARN the dominant shape from the
+   article itself and flag the sections / list items that break it. This
+   adapts to non-listicle posts (nothing dominates → nothing flagged) and
+   catches inconsistencies that were already wrong in the source document.
+   ------------------------------------------------------------------ */
+function clip(s)      { return (s && s.length > 280) ? s.slice(0, 280) + '…' : (s || ''); }
+function clipText(s)  { s = (s || '').trim(); return s.length > 90 ? s.slice(0, 90) + '…' : s; }
+
+// A list item "leads with bold" when its very first child is a <strong>/<b>
+// carrying real text and nothing meaningful precedes it.
+function liLeadsWithBold(li) {
+  const first = li.firstElementChild;
+  if (!first || !/^(STRONG|B)$/.test(first.tagName)) return false;
+  if (!first.textContent.trim()) return false;
+  const boldText = first.textContent;
+  const pre = li.textContent.slice(0, li.textContent.indexOf(boldText)).trim();
+  return pre === '';
+}
+
+// Split the body into sections keyed by top-level H2.
+function splitSections(body) {
+  const sections = [];
+  let cur = null;
+  [...body.children].forEach(el => {
+    if (el.tagName === 'H2') { cur = { heading: el.textContent.trim(), els: [] }; sections.push(cur); }
+    else if (cur) { cur.els.push(el); }
+  });
+  return sections;
+}
+
+function sectionFeatures(sec) {
+  let hasList = false, hasQuickTip = false, quickTipBold = false, quickTipHtml = '';
+  let hasParagraph = false;
+  for (const el of sec.els) {
+    if (el.tagName === 'UL' || el.tagName === 'OL') hasList = true;
+    if (el.tagName === 'P') {
+      const t = el.textContent.trim();
+      if (t) hasParagraph = true;
+      if (/^quick\s*tip\b/i.test(t)) {
+        hasQuickTip = true;
+        quickTipHtml = el.outerHTML;
+        const first = el.firstElementChild;
+        quickTipBold = !!first && /^(STRONG|B)$/.test(first.tagName) && !!first.textContent.trim();
+      }
+    }
+  }
+  return { hasList, hasParagraph, hasQuickTip, quickTipBold, quickTipHtml };
+}
+
+// Headings that are legitimately different from the numbered "item" sections
+// (intros, wrap-ups, FAQs). They are exempt from the per-item pattern checks so
+// a listicle's Conclusion isn't flagged for lacking a Quick Tip or a list.
+const NON_ITEM_HEADING = /^\s*(introduction|intro|conclusion|summary|overview|final thoughts|wrap[- ]?up|key takeaways|takeaways|faq|frequently asked questions|references|sources|in closing|to wrap up)\b/i;
+
+function checkStructure(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+  const body = doc.body;
+
+  // 1) Bold lead-in consistency — judged against the ARTICLE-WIDE norm, so a
+  // whole list with no bold leads (when the rest of the article uses them) is
+  // caught, not just the odd item inside an otherwise-bold list.
+  const lists = [...body.querySelectorAll('ul, ol')].map(list => {
+    const items = [...list.children].filter(el => el.tagName === 'LI');
+    return { list, items, flags: items.map(liLeadsWithBold) };
+  }).filter(l => l.items.length >= 2);
+
+  const totalItems = lists.reduce((s, l) => s + l.items.length, 0);
+  const totalBold  = lists.reduce((s, l) => s + l.flags.filter(Boolean).length, 0);
+  const boldIsNorm = totalItems >= 4 && totalBold > totalItems / 2;
+
+  if (boldIsNorm) {
+    lists.forEach(({ list, items, flags }) => {
+      const boldN = flags.filter(Boolean).length;
+      if (boldN === 0) {
+        // Entire list breaks the pattern — one issue for the whole list.
+        issues.push({
+          sev: 'warn',
+          msg: `This list has no bold lead-ins, but the article's other lists use them.`,
+          ctx: clip(list.outerHTML)
+        });
+      } else if (boldN < items.length) {
+        // Mostly bold with a few exceptions — flag each exception.
+        items.forEach((li, idx) => {
+          if (flags[idx]) return;
+          issues.push({
+            sev: 'warn',
+            msg: `List item has no bold lead-in — ${boldN}/${items.length} items in this list do.`,
+            ctx: clip(li.outerHTML)
+          });
+        });
+      }
+    });
+  }
+
+  // 2) Per-item section pattern. The "items" are the sections that follow the
+  // repeating shape (typically numbered), so intros/conclusions are excluded
+  // both from the norm and from being flagged.
+  const itemSections = splitSections(body).filter(s => !NON_ITEM_HEADING.test(s.heading));
+  if (itemSections.length >= 3) {
+    const feat = itemSections.map(sectionFeatures);
+    const count = key => feat.filter(f => f[key]).length;
+    const qtN = count('hasQuickTip'), listN = count('hasList');
+    const quickTipDominant = qtN > feat.length / 2;
+    const listDominant     = listN > feat.length / 2;
+
+    itemSections.forEach((sec, i) => {
+      const f = feat[i];
+      const head = clipText(sec.heading);
+      if (quickTipDominant && !f.hasQuickTip) {
+        issues.push({ sev: 'warn', msg: `Section "${head}" has no Quick Tip — ${qtN}/${feat.length} item sections have one.`, ctx: head });
+      }
+      if (quickTipDominant && f.hasQuickTip && !f.quickTipBold) {
+        issues.push({ sev: 'warn', msg: `The Quick Tip in section "${head}" is not bold — the others are.`, ctx: clip(f.quickTipHtml) });
+      }
+      if (listDominant && !f.hasList) {
+        issues.push({ sev: 'warn', msg: `Section "${head}" has no bullet list — ${listN}/${feat.length} item sections include one.`, ctx: head });
+      }
+    });
+  }
+
+  return issues;
+}
+
+/* ------------------------------------------------------------------
+   Content parity vs the source .docx.
+   Compares the visible text of the current (possibly hand-edited) HTML against
+   the text mammoth produced from the document's body — unit by unit
+   (paragraph / list item / heading) using an LCS alignment. Flags anything the
+   conversion or a manual edit dropped (error) or added (warning). A dropped +
+   added pair sitting next to each other usually means a line was reworded.
+   Report-only: there is no safe automatic fix for "text changed".
+   ------------------------------------------------------------------ */
+function textUnits(html) {
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+  const units = [];
+  doc.body.querySelectorAll('p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th').forEach(el => {
+    // Skip block containers that only wrap other blocks (avoid double-counting).
+    if (el.querySelector('p,li,ul,ol,table')) return;
+    const t = el.textContent.replace(/ /g, ' ').trim();
+    if (t) units.push(t);
+  });
+  return units;
+}
+
+// LCS alignment → indices present only in a (removed) and only in b (added).
+function diffUnits(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const removed = [], added = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { removed.push(i++); }
+    else { added.push(j++); }
+  }
+  while (i < n) removed.push(i++);
+  while (j < m) added.push(j++);
+  return { removed, added };
+}
+
+function checkParity(html, sourceBodyHtml) {
+  if (!sourceBodyHtml) return [];
+  const src = textUnits(sourceBodyHtml);
+  const out = textUnits(html);
+  const { removed, added } = diffUnits(src.map(normalize), out.map(normalize));
+  const issues = [];
+  removed.forEach(idx => issues.push({
+    sev: 'error',
+    msg: 'Text from the document is missing from the post.',
+    ctx: clipText(src[idx])
+  }));
+  added.forEach(idx => issues.push({
+    sev: 'warn',
+    msg: 'Post contains text that is not in the document.',
+    ctx: clipText(out[idx])
+  }));
   return issues;
 }
 
@@ -1379,7 +1572,7 @@ function renderCardBody(card, post) {
           year: new Date().getFullYear(),
           month: post.parsed.dateMM,
           day: post.parsed.dateDD,
-          hour: 5,
+          hour: 4,
           minute: 0
         };
       }
@@ -1444,6 +1637,8 @@ function renderCardBody(card, post) {
     const html = htmlArea.value;
     const fmtIssues = checkFormat(html);
     const consistencyIssues = checkConsistency(html);
+    const structureIssues = checkStructure(html);
+    const parityIssues = checkParity(html, post.parsed.sourceBodyHtml);
     let grammarIssues = [];
     let grammarError = null;
     try {
@@ -1461,8 +1656,8 @@ function renderCardBody(card, post) {
       }));
     } catch (e) { grammarError = e.message; }
 
-    const all = [...fmtIssues, ...consistencyIssues, ...grammarIssues];
-    post.issues = { fmt: fmtIssues, consistency: consistencyIssues, grammar: grammarIssues, grammarError, all };
+    const all = [...fmtIssues, ...consistencyIssues, ...structureIssues, ...parityIssues, ...grammarIssues];
+    post.issues = { fmt: fmtIssues, consistency: consistencyIssues, structure: structureIssues, parity: parityIssues, grammar: grammarIssues, grammarError, all };
     renderIssues(issuesContainer, post, htmlArea, syncPreview);
     updateCardBadge(post);
     runCheckBtn.disabled = false;
@@ -1474,7 +1669,7 @@ function renderCardBody(card, post) {
 }
 
 function renderIssues(container, post, htmlArea, syncPreview) {
-  const { fmt, consistency, grammar, grammarError, all } = post.issues;
+  const { fmt, consistency, structure, parity, grammar, grammarError, all } = post.issues;
   const total = all.length;
   if (total === 0 && !grammarError) {
     container.innerHTML = `<div class="group-title">All Checks <span class="badge ok">clean ✓</span></div><div class="empty">No issues found.</div>`;
@@ -1495,7 +1690,7 @@ function renderIssues(container, post, htmlArea, syncPreview) {
     let s = `<div class="issue ${i.sev}" data-issue-idx="${idx}">`;
     s += `<div class="msg">${escapeHtml(i.msg)}</div>`;
     if (i.ctx) {
-      let ctxHtml = escapeHtml(i.ctx).replace('«', `<mark style="background:rgba(255,179,71,.3);padding:0 2px;border-radius:2px;">`).replace('»', '</mark>');
+      let ctxHtml = escapeHtml(i.ctx).replace('«', `<mark style="background:rgba(245,197,66,.32);color:inherit;padding:0 2px;border-radius:2px;">`).replace('»', '</mark>');
       s += `<div class="ctx">${ctxHtml}</div>`;
     }
     if (i.fix) s += `<div class="fix">→ ${escapeHtml(i.fix)}</div>`;
@@ -1517,6 +1712,22 @@ function renderIssues(container, post, htmlArea, syncPreview) {
   h += `<div class="group-title">Consistency ${fmtBadges(conErr, conWarn, consistency.length)}</div>`;
   if (consistency.length) consistency.forEach(i => h += renderIssue(i, all.indexOf(i)));
   else h += `<div class="empty">No consistency issues.</div>`;
+
+  // Structure & Pattern
+  const stStructure = structure || [];
+  const stErr = stStructure.filter(i => i.sev === 'error');
+  const stWarn = stStructure.filter(i => i.sev === 'warn');
+  h += `<div class="group-title">Structure & Pattern ${fmtBadges(stErr, stWarn, stStructure.length)}</div>`;
+  if (stStructure.length) stStructure.forEach(i => h += renderIssue(i, all.indexOf(i)));
+  else h += `<div class="empty">No structure issues — sections follow a consistent pattern.</div>`;
+
+  // Content Parity vs source .docx
+  const par = parity || [];
+  const parErr = par.filter(i => i.sev === 'error');
+  const parWarn = par.filter(i => i.sev === 'warn');
+  h += `<div class="group-title">Content Parity vs Source ${fmtBadges(parErr, parWarn, par.length)}</div>`;
+  if (par.length) par.forEach(i => h += renderIssue(i, all.indexOf(i)));
+  else h += `<div class="empty">Matches the document — no text added or dropped.</div>`;
 
   // Grammar
   const grErr = grammar.filter(i => i.sev === 'error');

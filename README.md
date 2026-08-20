@@ -369,8 +369,8 @@ A general-purpose, site-agnostic version of the scheduling logic: it doesn't bui
 1. Pick the timezone and (optionally) a class name.
 2. Set **Start**/**End** as `MM/DD/YYYY hh:mm:ss` (24-hour; am/pm and seconds optional; date-only = whole day; blank start = show from the beginning; blank end = never ends). Fields default to today's whole-day window in the chosen timezone.
 3. Watch the live **Now in this timezone** clock and the **status** line (Showing now / Hidden — starts… / window ended…). The **Test: show now (1 hr)** button sets a window that's live immediately for a quick end-to-end check.
-4. **Copy** the CSS class onto the element — WPBakery **Row/Element → Extra class name**, Elementor **Advanced → CSS Classes**, or a plain HTML `class="…"`.
-5. **Copy** the one-time snippet and paste it once anywhere on the page (a code area, WPBakery **Raw HTML**, or Elementor **HTML** widget). Clear the cache after publishing.
+4. **Copy** the CSS class onto the element — its `class="…"` attribute, or your page builder's CSS-class / extra-class field.
+5. **Copy** the one-time snippet and paste it once anywhere on the page — a site-wide header/footer code area, or any HTML / embed / code block. Clear the cache after publishing.
 
 ### Notes
 
