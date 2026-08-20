@@ -13,10 +13,14 @@ either of them.
 Drop the monthly ZIP (one `.docx` + one image per post — typically 4 or 5, one per Monday) into the side panel and it:
 
 1. Unzips, pairs each `.docx` with its image, and parses all posts at once.
-2. Flags problems per post before you publish — missing title / SEO title / meta
-   description, no H2s, no image, and **`TOPIC_MISMATCH`** (the image filename
-   names a different niche than the selected topic — e.g. a Funeral image on a
-   Hospice post; the pairing is right but the source asset is wrong).
+2. Runs the same **Quality Check** as the DOCX Batch web tool on every post —
+   Format & Accessibility, Consistency, Structure & Pattern, and Content Parity
+   vs the source `.docx` — plus parse/pairing flags: missing title / SEO title /
+   meta description, no H2s, no image, and **`TOPIC_MISMATCH`** (the image
+   filename names a different niche than the selected topic — e.g. a Funeral
+   image on a Hospice post; the pairing is right but the source asset is wrong).
+   The content HTML is **editable** in the panel, **Apply Fix** buttons apply the
+   safe fixes, and your edits carry through to the WordPress fill.
 3. Walks you through the posts one at a time — **Post 2 of 4** — with a **Fill
    This Post** button that fills the WordPress Classic Editor tab you have open
    (Title, Date @ 4:00 AM, Author *Welton Hong*, Yoast SEO Title + Meta

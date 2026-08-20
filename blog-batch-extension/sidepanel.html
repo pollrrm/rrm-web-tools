@@ -167,6 +167,52 @@
   .nav-row { display: flex; gap: 6px; margin-top: 4px; }
   .nav-row button { flex: 1; }
 
+  /* editable content + quality check */
+  .content-edit {
+    width: 100%; min-height: 160px; resize: vertical; display: block;
+    background: #0f1115; color: #e6e6e6; border: 0; outline: none;
+    padding: 7px 8px; font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+    font-size: 10px; line-height: 1.45;
+  }
+  .recheck-btn { padding: 2px 8px !important; font-size: 9px !important; }
+  details.checks {
+    background: #181b22; border: 1px solid #262a33; border-radius: 6px; margin-bottom: 10px;
+  }
+  details.checks > summary {
+    list-style: none; cursor: pointer; padding: 7px 10px; font-size: 11px; font-weight: 600; color: #b8bdc8;
+  }
+  details.checks > summary::-webkit-details-marker { display: none; }
+  details.checks > summary::before { content: "▸ "; color: #8a93a3; }
+  details.checks[open] > summary::before { content: "▾ "; }
+  .checks .c-err { color: #ff7676; }
+  .checks .c-ok { color: #6cd17b; }
+  .checks-body { padding: 4px 10px 10px; border-top: 1px solid #262a33; }
+  .grp-title {
+    font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: #8a93a3;
+    font-weight: 700; margin: 8px 0 4px; display: flex; gap: 6px; align-items: center;
+  }
+  .grp-title .badge-e, .grp-title .badge-w, .grp-title .badge-ok { padding: 0 6px; border-radius: 8px; font-size: 9px; font-weight: 600; }
+  .grp-title .badge-e { background: rgba(255,93,108,.16); color: #ff7676; }
+  .grp-title .badge-w { background: rgba(245,197,66,.16); color: #f5c542; }
+  .grp-title .badge-ok { background: rgba(74,222,128,.14); color: #6cd17b; }
+  .checks .ctx {
+    font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: #8a93a3;
+    background: #060709; padding: 4px 6px; border-radius: 3px; margin-top: 4px;
+    white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow: auto;
+  }
+  .checks .fixnote { color: #6cd17b; font-size: 9px; margin-top: 3px; }
+  .fix-btn {
+    margin-top: 5px; background: rgba(108,209,123,.14); color: #6cd17b;
+    border: 1px solid rgba(108,209,123,.4); padding: 2px 8px; border-radius: 4px;
+    font-size: 9px; font-weight: 600; cursor: pointer; display: block;
+  }
+  .fix-btn:hover { background: rgba(108,209,123,.25); }
+  .fix-btn:disabled { opacity: .5; cursor: default; }
+
+  .fill-note { font-size: 10px; margin-top: 6px; text-align: center; }
+  .fill-note.ok { color: #6cd17b; }
+  .fill-note.err { color: #ff7676; }
+
   .empty { text-align: center; color: #8a93a3; font-size: 11px; padding: 20px 0; }
   .spinner {
     display: inline-block; width: 10px; height: 10px;

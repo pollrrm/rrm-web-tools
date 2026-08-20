@@ -289,6 +289,9 @@ function parseDocxHtml(html, filename) {
     outBlocks.push(block.replace(/[\s ]+<\/li>/g, '</li>'));
   }
   const bodyHtml = outBlocks.join('\n').replace(/<a\b((?:(?!\bhref\s*=)[^>])*?)>([\s\S]*?)<\/a>/gi, '$2');
+  // Raw source body (pre-transform) — kept so the Content Parity check can
+  // compare the published/edited HTML against what the document said.
+  const sourceBodyHtml = blocks.slice(bodyStart, bodyEnd).join('\n');
 
   let dateMM = null, dateDD = null;
   const dateFromName = filename.match(/^(\d{1,2})\.(\d{1,2})\b/);
@@ -303,7 +306,7 @@ function parseDocxHtml(html, filename) {
   const year = new Date().getFullYear();
   const formattedDate = (dateMM && dateDD) ? `${MONTHS[dateMM - 1]} ${dateDD}, ${year}` : (dateText || '');
 
-  return { date: formattedDate, dateMM, dateDD, title: titleText, seoTitle, metaDescription, bodyHtml };
+  return { date: formattedDate, dateMM, dateDD, title: titleText, seoTitle, metaDescription, bodyHtml, sourceBodyHtml };
 }
 
 // ============================================================================
@@ -401,6 +404,285 @@ function buildWarnings(parsed, imageName, topic) {
 }
 
 // ============================================================================
+// Quality Check — ported verbatim from docx-batch-to-wordpress.html so the
+// batch panel runs the same Format / Consistency / Structure / Parity checks
+// as the web tool. These operate on the (editable) content HTML.
+// ============================================================================
+function clip(s)     { return (s && s.length > 240) ? s.slice(0, 240) + '…' : (s || ''); }
+function clipText(s) { s = (s || '').trim(); return s.length > 90 ? s.slice(0, 90) + '…' : s; }
+
+function checkFormat(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+  doc.querySelectorAll('img').forEach(img => {
+    if (!img.hasAttribute('alt')) {
+      const src = img.getAttribute('src') || '';
+      issues.push({
+        sev: 'error', msg: 'Image missing alt attribute', ctx: img.outerHTML,
+        fix: 'Add alt="" or descriptive alt text.',
+        apply: (h) => {
+          if (!src) return h;
+          const srcEsc = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const re = new RegExp(`<img\\b([^>]*\\bsrc\\s*=\\s*["']?${srcEsc}["']?[^>]*?)(\\s*/?>)`, 'i');
+          return h.replace(re, (m, attrs, end) => /\balt\s*=/i.test(attrs) ? m : `<img${attrs} alt=""${end}`);
+        }
+      });
+    }
+    if (!img.hasAttribute('src') || !img.getAttribute('src').trim()) {
+      issues.push({ sev: 'error', msg: 'Image missing src', ctx: img.outerHTML });
+    }
+  });
+
+  const headings = [...doc.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+  let lastLevel = 0, h1Count = 0;
+  headings.forEach(h => {
+    const level = parseInt(h.tagName[1], 10);
+    if (level === 1) h1Count++;
+    if (lastLevel && level > lastLevel + 1) issues.push({ sev: 'warn', msg: `Heading skips levels (H${lastLevel} → H${level})`, ctx: h.outerHTML });
+    if (!h.textContent.trim()) issues.push({ sev: 'error', msg: `Empty ${h.tagName}`, ctx: h.outerHTML });
+    lastLevel = level;
+  });
+  if (h1Count > 1) issues.push({ sev: 'warn', msg: `Multiple H1 tags (${h1Count}) — WordPress title becomes the H1.` });
+
+  doc.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href');
+    if (!href || !href.trim()) issues.push({ sev: 'warn', msg: 'Link missing href', ctx: a.outerHTML });
+    else if (href === '#' || href === 'javascript:void(0)') issues.push({ sev: 'warn', msg: 'Placeholder href', ctx: a.outerHTML });
+    if (!a.textContent.trim() && !a.querySelector('img[alt]')) issues.push({ sev: 'error', msg: 'Link has no accessible text', ctx: a.outerHTML });
+  });
+
+  issues.push(...checkTagBalance(html));
+  return issues;
+}
+
+function checkTagBalance(html) {
+  const issues = [];
+  const voidEls = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+  const stack = [];
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/)?>/g;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    const fullTag = m[0];
+    const name = m[1].toLowerCase();
+    const isClose = fullTag.startsWith('</');
+    const selfClose = !!m[2] || voidEls.has(name);
+    if (isClose) {
+      if (stack.length === 0) issues.push({ sev: 'error', msg: `Unexpected </${name}>`, ctx: fullTag });
+      else if (stack[stack.length - 1].name !== name) {
+        const opener = stack[stack.length - 1];
+        issues.push({ sev: 'error', msg: `Mismatched tag — expected </${opener.name}> but got </${name}>`, ctx: `${opener.tag} … ${fullTag}` });
+        const idx = [...stack].reverse().findIndex(s => s.name === name);
+        if (idx !== -1) stack.length = stack.length - idx - 1;
+      } else stack.pop();
+    } else if (!selfClose) stack.push({ name, tag: fullTag });
+  }
+  stack.forEach(s => issues.push({ sev: 'error', msg: `Unclosed <${s.name}>`, ctx: s.tag }));
+  return issues;
+}
+
+function checkConsistency(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+
+  doc.querySelectorAll('ul, ol').forEach(list => {
+    const items = [...list.children].filter(el => el.tagName === 'LI');
+    if (items.length < 3) return;
+    const endings = items.map(li => /[.!?]$/.test(li.textContent.replace(/[\s"'\)\]]+$/, '')) ? 'punct' : 'none');
+    const punctCount = endings.filter(e => e === 'punct').length;
+    if (punctCount > items.length / 2 && punctCount < items.length) {
+      items.forEach((li, idx) => {
+        if (endings[idx] === 'punct') return;
+        const fp = li.textContent.trim().slice(-40);
+        issues.push({
+          sev: 'warn',
+          msg: `List item missing ending punctuation — ${punctCount}/${items.length} siblings end with a period.`,
+          ctx: clip(li.outerHTML),
+          apply: (h) => {
+            const liHtml = li.outerHTML;
+            if (h.includes(liHtml)) return h.replace(liHtml, liHtml.replace(/<\/li>\s*$/, '.</li>'));
+            const escFP = fp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return h.replace(new RegExp(`(${escFP})(\\s*</li>)`, 'i'), '$1.$2');
+          }
+        });
+      });
+    }
+  });
+
+  ['h1','h2','h3','h4'].forEach(tag => {
+    const headings = [...doc.querySelectorAll(tag)];
+    if (headings.length < 3) return;
+    const SEP_NAMES = { '.': 'period', ')': 'paren', ':': 'colon' };
+    const numbered = headings.map(h => {
+      const text = h.textContent.trim();
+      const mm = text.match(/^(\d+)([.):]|\s)/);
+      if (!mm) return null;
+      const sepRaw = mm[2];
+      const style = /\s/.test(sepRaw) ? 'space-only' : SEP_NAMES[sepRaw] || 'unknown';
+      return { h, text, num: mm[1], sepRaw, style };
+    }).filter(Boolean);
+    if (numbered.length < 3) return;
+    const counts = {};
+    numbered.forEach(n => counts[n.style] = (counts[n.style] || 0) + 1);
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const [dominantStyle, dominantCount] = sorted[0];
+    if (dominantCount === numbered.length) return;
+    if (dominantCount <= numbered.length / 2) return;
+    if (dominantStyle === 'space-only' || dominantStyle === 'unknown') return;
+    const dominantSep = dominantStyle === 'period' ? '.' : dominantStyle === 'paren' ? ')' : ':';
+    numbered.forEach(n => {
+      if (n.style === dominantStyle) return;
+      const visibleSep = n.style === 'space-only' ? '' : n.sepRaw;
+      issues.push({
+        sev: 'warn',
+        msg: `${tag.toUpperCase()} number prefix uses "${n.num}${visibleSep}" but ${dominantCount}/${numbered.length} other ${tag.toUpperCase()}s use "${dominantSep}" after the number.`,
+        ctx: n.h.outerHTML,
+        fix: `Change "${n.num}${visibleSep}" to "${n.num}${dominantSep}" to match the rest.`,
+        apply: (h) => {
+          const tagRe = new RegExp(`(<${tag}\\b[^>]*>)([\\s\\S]*?)(</${tag}>)`, 'gi');
+          return h.replace(tagRe, (full, open, inner, close) => {
+            const innerText = inner.replace(/<[^>]+>/g, '').trim();
+            if (innerText !== n.text) return full;
+            const fixed = inner.replace(/^(\s*(?:<[^>]+>\s*)*)(\d+)([.):]?)(\s+)/, (mAll, lead, num, sep, ws) => {
+              if (num !== n.num) return mAll;
+              return `${lead}${num}${dominantSep}${ws}`;
+            });
+            return `${open}${fixed}${close}`;
+          });
+        }
+      });
+    });
+  });
+
+  return issues;
+}
+
+// Headings exempt from the per-item pattern (intros / wrap-ups / FAQs).
+const NON_ITEM_HEADING = /^\s*(introduction|intro|conclusion|summary|overview|final thoughts|wrap[- ]?up|key takeaways|takeaways|faq|frequently asked questions|references|sources|in closing|to wrap up)\b/i;
+
+function liLeadsWithBold(li) {
+  const first = li.firstElementChild;
+  if (!first || !/^(STRONG|B)$/.test(first.tagName)) return false;
+  if (!first.textContent.trim()) return false;
+  const boldText = first.textContent;
+  const pre = li.textContent.slice(0, li.textContent.indexOf(boldText)).trim();
+  return pre === '';
+}
+function splitSections(body) {
+  const sections = []; let cur = null;
+  [...body.children].forEach(el => {
+    if (el.tagName === 'H2') { cur = { heading: el.textContent.trim(), els: [] }; sections.push(cur); }
+    else if (cur) cur.els.push(el);
+  });
+  return sections;
+}
+function sectionFeatures(sec) {
+  let hasList = false, hasQuickTip = false, quickTipBold = false, quickTipHtml = '';
+  for (const el of sec.els) {
+    if (el.tagName === 'UL' || el.tagName === 'OL') hasList = true;
+    if (el.tagName === 'P') {
+      const t = el.textContent.trim();
+      if (/^quick\s*tip\b/i.test(t)) {
+        hasQuickTip = true; quickTipHtml = el.outerHTML;
+        const first = el.firstElementChild;
+        quickTipBold = !!first && /^(STRONG|B)$/.test(first.tagName) && !!first.textContent.trim();
+      }
+    }
+  }
+  return { hasList, hasQuickTip, quickTipBold, quickTipHtml };
+}
+function checkStructure(html) {
+  const issues = [];
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+  const body = doc.body;
+
+  const lists = [...body.querySelectorAll('ul, ol')].map(list => {
+    const items = [...list.children].filter(el => el.tagName === 'LI');
+    return { list, items, flags: items.map(liLeadsWithBold) };
+  }).filter(l => l.items.length >= 2);
+  const totalItems = lists.reduce((s, l) => s + l.items.length, 0);
+  const totalBold = lists.reduce((s, l) => s + l.flags.filter(Boolean).length, 0);
+  if (totalItems >= 4 && totalBold > totalItems / 2) {
+    lists.forEach(({ list, items, flags }) => {
+      const boldN = flags.filter(Boolean).length;
+      if (boldN === 0) {
+        issues.push({ sev: 'warn', msg: `This list has no bold lead-ins, but the article's other lists use them.`, ctx: clip(list.outerHTML) });
+      } else if (boldN < items.length) {
+        items.forEach((li, idx) => {
+          if (flags[idx]) return;
+          issues.push({ sev: 'warn', msg: `List item has no bold lead-in — ${boldN}/${items.length} items in this list do.`, ctx: clip(li.outerHTML) });
+        });
+      }
+    });
+  }
+
+  const itemSections = splitSections(body).filter(s => !NON_ITEM_HEADING.test(s.heading));
+  if (itemSections.length >= 3) {
+    const feat = itemSections.map(sectionFeatures);
+    const count = key => feat.filter(f => f[key]).length;
+    const qtN = count('hasQuickTip'), listN = count('hasList');
+    const quickTipDominant = qtN > feat.length / 2;
+    const listDominant = listN > feat.length / 2;
+    itemSections.forEach((sec, i) => {
+      const f = feat[i]; const head = clipText(sec.heading);
+      if (quickTipDominant && !f.hasQuickTip) issues.push({ sev: 'warn', msg: `Section "${head}" has no Quick Tip — ${qtN}/${feat.length} item sections have one.`, ctx: head });
+      if (quickTipDominant && f.hasQuickTip && !f.quickTipBold) issues.push({ sev: 'warn', msg: `The Quick Tip in section "${head}" is not bold — the others are.`, ctx: clip(f.quickTipHtml) });
+      if (listDominant && !f.hasList) issues.push({ sev: 'warn', msg: `Section "${head}" has no bullet list — ${listN}/${feat.length} item sections include one.`, ctx: head });
+    });
+  }
+  return issues;
+}
+
+function textUnits(html) {
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
+  const units = [];
+  doc.body.querySelectorAll('p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th').forEach(el => {
+    if (el.querySelector('p,li,ul,ol,table')) return;
+    const t = el.textContent.replace(/ /g, ' ').trim();
+    if (t) units.push(t);
+  });
+  return units;
+}
+function diffUnits(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const removed = [], added = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) removed.push(i++);
+    else added.push(j++);
+  }
+  while (i < n) removed.push(i++);
+  while (j < m) added.push(j++);
+  return { removed, added };
+}
+function checkParity(html, sourceBodyHtml) {
+  if (!sourceBodyHtml) return [];
+  const src = textUnits(sourceBodyHtml);
+  const out = textUnits(html);
+  const { removed, added } = diffUnits(src.map(normalize), out.map(normalize));
+  const issues = [];
+  removed.forEach(idx => issues.push({ sev: 'error', msg: 'Text from the document is missing from the post.', ctx: clipText(src[idx]) }));
+  added.forEach(idx => issues.push({ sev: 'warn', msg: 'Post contains text that is not in the document.', ctx: clipText(out[idx]) }));
+  return issues;
+}
+
+// Runs every check for a post against its current (possibly edited) content.
+function runAllChecks(post) {
+  const html = post.contentHtml || '';
+  return {
+    format: checkFormat(html),
+    consistency: checkConsistency(html),
+    structure: checkStructure(html),
+    parity: checkParity(html, post.sourceBodyHtml || '')
+  };
+}
+
+// ============================================================================
 // Queue storage helpers
 // ============================================================================
 async function readQueueFromStorage() {
@@ -481,6 +763,7 @@ async function buildQueueFromPairs(pairs, sourceName) {
       metaDesc: parsed.metaDescription || '',
       dateMM: parsed.dateMM, dateDD: parsed.dateDD, dateLabel: parsed.date || '',
       contentHtml: parsed.bodyHtml || '',
+      sourceBodyHtml: parsed.sourceBodyHtml || '',
       image,
       warnings: buildWarnings(parsed, image ? image.name : null, topic),
       wpPostId: null, wpUrl: null, error: null,
@@ -573,6 +856,71 @@ function attachCopyHandlers(root) {
   });
 }
 
+function sevCount(arr) { return { e: arr.filter(i => i.sev === 'error').length, w: arr.filter(i => i.sev !== 'error').length }; }
+
+// Renders the grouped Quality Check for one post into `container`. Findings are
+// recomputed from the post's current content each call, so Apply Fix / edits
+// always reflect the latest HTML.
+function renderChecks(container, post) {
+  container.innerHTML = '';
+  const checks = runAllChecks(post);
+  const groups = [
+    { name: 'Parse & Pairing',          items: post.warnings || [] },
+    { name: 'Format & Accessibility',   items: checks.format },
+    { name: 'Consistency',              items: checks.consistency },
+    { name: 'Structure & Pattern',      items: checks.structure },
+    { name: 'Content Parity vs Source', items: checks.parity }
+  ];
+  const totalE = groups.reduce((s, g) => s + g.items.filter(i => i.sev === 'error').length, 0);
+  const totalW = groups.reduce((s, g) => s + g.items.filter(i => i.sev !== 'error').length, 0);
+
+  const details = document.createElement('details');
+  details.className = 'checks';
+  if (totalE) details.open = true;
+  const summary = document.createElement('summary');
+  summary.innerHTML = (totalE || totalW)
+    ? `Quality check — ${totalE ? `<span class="c-err">${totalE} error${totalE > 1 ? 's' : ''}</span>` : ''}${totalE && totalW ? ' · ' : ''}${totalW ? `${totalW} warning${totalW > 1 ? 's' : ''}` : ''}`
+    : `Quality check — <span class="c-ok">clean ✓</span>`;
+  details.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'checks-body';
+  for (const g of groups) {
+    const c = sevCount(g.items);
+    const gt = document.createElement('div');
+    gt.className = 'grp-title';
+    gt.innerHTML = `${escapeHtml(g.name)} ${c.e ? `<span class="badge-e">${c.e}</span>` : ''}${c.w ? `<span class="badge-w">${c.w}</span>` : ''}${!g.items.length ? '<span class="badge-ok">clean</span>' : ''}`;
+    body.appendChild(gt);
+    for (const it of g.items) {
+      const d = document.createElement('div');
+      d.className = 'w ' + (it.sev === 'error' ? 'err' : '');
+      let h = '';
+      if (it.code) h += `<span class="code">${escapeHtml(it.code)}</span><br>`;
+      h += escapeHtml(it.msg);
+      if (it.ctx) h += `<div class="ctx">${escapeHtml(it.ctx)}</div>`;
+      if (it.fix) h += `<div class="fixnote">→ ${escapeHtml(it.fix)}</div>`;
+      d.innerHTML = h;
+      if (typeof it.apply === 'function') {
+        const b = document.createElement('button');
+        b.className = 'fix-btn';
+        b.textContent = 'Apply Fix';
+        b.addEventListener('click', async () => {
+          const before = post.contentHtml || '';
+          const after = it.apply(before);
+          if (after === before) { b.textContent = 'No change'; b.disabled = true; return; }
+          post.contentHtml = after;
+          await saveQueue();
+          render();
+        });
+        d.appendChild(b);
+      }
+      body.appendChild(d);
+    }
+  }
+  details.appendChild(body);
+  container.appendChild(details);
+}
+
 function render() {
   results.innerHTML = '';
   if (!queue || !queue.posts.length) {
@@ -615,36 +963,56 @@ function render() {
   const card = document.createElement('div');
   card.className = 'card';
   const catValue = `${(queue.categoryPath || ['Blogs']).join(' → ')}${queue.primaryCategory ? ' (Primary: ' + queue.primaryCategory + ')' : ''}`;
-  const errs = cur.warnings.filter(w => w.sev === 'error');
-  const warns = cur.warnings.filter(w => w.sev !== 'error');
-  const warnSummary = cur.warnings.length
-    ? `<details class="warnings"${errs.length ? ' open' : ''}>
-         <summary>${errs.length ? `${errs.length} error${errs.length>1?'s':''} · ` : ''}${warns.length} warning${warns.length===1?'':'s'}</summary>
-         ${cur.warnings.map(w => `<div class="w ${w.sev === 'error' ? 'err' : ''}"><span class="code">${escapeHtml(w.code)}</span><br>${escapeHtml(w.msg)}</div>`).join('')}
-       </details>`
-    : '';
-
   card.innerHTML = `
     <div class="title">${escapeHtml(cur.title || cur.docxName)}</div>
     <div class="meta">${escapeHtml(cur.dateLabel || '—')} · ${escapeHtml(cur.docxName)}</div>
     ${cur.image ? `<img class="thumb" src="${cur.image.dataUrl}" alt="">` : ''}
-    ${warnSummary}
     ${field('Title',            escapeHtml(cur.title || '—'),   cur.title || '')}
     ${field('Date',             escapeHtml(cur.dateLabel || '—'), cur.dateLabel || '')}
     ${field('SEO Title',        escapeHtml(cur.seoTitle || '—'), cur.seoTitle || '')}
     ${field('Meta Description', escapeHtml(cur.metaDesc || '—'), cur.metaDesc || '')}
     ${field('Category',         escapeHtml(catValue))}
-    ${cur.contentHtml ? contentBlock('Content (HTML)', cur.contentHtml) : ''}
+    <div class="content-block">
+      <div class="head">
+        <span>Content (HTML) — editable</span>
+        <span style="display:flex;gap:6px">
+          <button class="ghost recheck-btn" id="recheckBtn">Re-check</button>
+          <button class="copy-btn" id="copyContent">Copy</button>
+        </span>
+      </div>
+      <textarea class="content-edit" id="contentEdit" spellcheck="false"></textarea>
+    </div>
+    <div id="checksBox"></div>
     <div class="nav-row">
       <button class="ghost" id="prevBtn" ${queue.cursor === 0 ? 'disabled' : ''}>← Prev</button>
       <button class="ghost" id="skipBtn">Skip</button>
       <button class="ghost" id="nextBtn" ${queue.cursor >= n - 1 ? 'disabled' : ''}>Next →</button>
     </div>
     <div class="nav-row" style="margin-top:6px">
-      <button class="fill-btn" id="fillBtn" ${canFill ? '' : 'disabled'}>Fill This Post</button>
-    </div>`;
+      <button class="fill-btn" id="fillBtn" ${canFill ? '' : 'disabled'}>${cur.status === 'filled' ? 'Filled ✓ — Re-fill' : cur.status === 'error' ? 'Retry Fill' : 'Fill This Post'}</button>
+    </div>
+    ${cur.status === 'filled' ? '<div class="fill-note ok">Filled. Review in WordPress, then Next → when ready.</div>' : ''}
+    ${cur.status === 'error' && cur.error ? `<div class="fill-note err">Fill error: ${escapeHtml(cur.error)}</div>` : ''}`;
   results.appendChild(card);
   attachCopyHandlers(card);
+
+  // Editable content — keep post.contentHtml in sync; persist on blur.
+  const contentEdit = card.querySelector('#contentEdit');
+  contentEdit.value = cur.contentHtml || '';
+  contentEdit.addEventListener('input', () => { cur.contentHtml = contentEdit.value; });
+  contentEdit.addEventListener('blur', () => { saveQueue(); });
+  card.querySelector('#copyContent').addEventListener('click', async (e) => {
+    try { await navigator.clipboard.writeText(contentEdit.value); } catch {}
+    const b = e.target, o = b.textContent;
+    b.textContent = 'Copied ✓'; b.classList.add('copied');
+    setTimeout(() => { b.textContent = o; b.classList.remove('copied'); }, 1200);
+  });
+  card.querySelector('#recheckBtn').addEventListener('click', async () => {
+    cur.contentHtml = contentEdit.value; await saveQueue(); render();
+  });
+
+  // Quality Check panel (Format / Consistency / Structure / Parity + parse/pairing)
+  renderChecks(card.querySelector('#checksBox'), cur);
 
   card.querySelector('#prevBtn').addEventListener('click', () => { if (queue.cursor > 0) { queue.cursor--; saveQueue(); render(); } });
   card.querySelector('#nextBtn').addEventListener('click', () => { if (queue.cursor < n - 1) { queue.cursor++; saveQueue(); render(); } });
@@ -686,8 +1054,8 @@ async function fillCurrent(btn) {
     if (res && res.ok) {
       post.status = 'filled';
       post.error = null;
-      const nxt = nextPendingIndex(queue.cursor);
-      if (nxt != null) queue.cursor = nxt;
+      // Stay on the current post — do NOT auto-advance. The user reviews the
+      // filled post in WordPress and moves on with Next → when ready.
       await saveQueue();
       render();
     } else {
