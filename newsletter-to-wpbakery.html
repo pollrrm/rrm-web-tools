@@ -204,6 +204,44 @@
   .article textarea { min-height: 140px; }
 
   .out-textarea { min-height: 320px; }
+  /* ----- Link & UTM audit ----- */
+  .issue-tag-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 12px; padding: 10px 12px;
+    background: rgba(91,141,239,0.06);
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .issue-tag-row label { margin: 0; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+  .issue-tag-row input[type=text] { width: 240px; padding: 5px 8px; }
+  .issue-tag-row .hint { font-size: 12px; color: var(--text-muted); opacity: .8; flex: 1 1 260px; min-width: 220px; }
+  .link-audit { margin-bottom: 12px; }
+  .link-audit:empty { display: none; }
+  .audit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .audit-pill {
+    font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent;
+  }
+  .audit-pill.good { background: rgba(64,180,120,0.15); color: #6ddba0; border-color: rgba(64,180,120,0.35); }
+  .audit-pill.warn { background: rgba(230,170,60,0.15); color: #e8bf72; border-color: rgba(230,170,60,0.35); }
+  .audit-pill.bad  { background: rgba(226,90,90,0.15);  color: #f08b8b; border-color: rgba(226,90,90,0.35); }
+  .audit-count { font-size: 12px; color: var(--text-muted); }
+  .audit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .audit-list li {
+    font-size: 13px; line-height: 1.45; padding: 8px 10px;
+    border-radius: 5px; border-left: 3px solid transparent;
+    background: var(--panel-2, rgba(255,255,255,0.02));
+  }
+  .audit-list li.error { border-left-color: #e25a5a; }
+  .audit-list li.warn  { border-left-color: #e6aa3c; }
+  .audit-where {
+    display: inline-block; margin-right: 8px; padding: 1px 7px;
+    font-size: 11px; border-radius: 3px;
+    background: rgba(255,255,255,0.06); color: var(--text-muted);
+  }
+  .audit-list code {
+    display: block; margin-top: 5px; font-size: 11.5px;
+    color: var(--text-muted); word-break: break-all;
+  }
 
   details summary {
     cursor: pointer; color: var(--text-dim); font-size: 12px;
@@ -333,6 +371,13 @@
       <input type="text" id="formId" value="11846" style="width: 90px; padding: 4px 8px;">
     </label>
   </div>
+  <div class="issue-tag-row">
+    <label for="issueTag">Issue tag (utm_content)</label>
+    <input type="text" id="issueTag" placeholder="e.g. elevate-august-2026">
+    <button class="tiny secondary" id="applyTagBtn">Apply to all tracked links</button>
+    <span class="hint">Every ringringmarketing.com link should carry this. Filled in from the links themselves — change it and click apply to fix a stale tag everywhere at once.</span>
+  </div>
+  <div id="linkAudit" class="link-audit"></div>
   <textarea id="output" readonly class="out-textarea" placeholder="Click Generate to build the WPBakery code."></textarea>
   <div class="toolbar">
     <button id="generateBtn">Generate WPBakery code</button>
@@ -379,6 +424,9 @@
   // rowBg is derived per-row from the article(s) in it; we store on article and reconcile.
   let articles = [];
   let nextId = 1;
+  // Every link found in the parsed source, so the audit can report links that
+  // silently vanished between the source and the generated shortcodes.
+  let sourceLinks = [];
 
   // ----- Tabs -----
   document.querySelectorAll('.tab').forEach(tab => {
@@ -608,6 +656,11 @@
   function parseUnlayerHtml(htmlStr) {
     const doc = new DOMParser().parseFromString(htmlStr, 'text/html');
     const arts = [];
+    // Snapshot every content link in the source so the audit can flag any that the
+    // layout/merge steps drop before they reach the generated shortcodes.
+    sourceLinks = Array.from(doc.querySelectorAll('a[href]'))
+      .map(a => ({ href: a.getAttribute('href') || '', text: (a.textContent || '').replace(/\s+/g, ' ').trim() }))
+      .filter(l => /^(https?:|mailto:|tel:)/i.test(l.href) && !IGNORED_LINK_RE.test(l.href) && !SOCIAL_PROFILE_RE.test(l.href));
     // Find row containers (Unlayer) OR fall back to top-level structural tables
     let rows = Array.from(doc.querySelectorAll('.u-row-container'));
     if (!rows.length) {
@@ -668,11 +721,45 @@
         }
 
         // Combine body HTML
-        const bodyWrap = doc.createElement('div');
-        bodyEls.forEach(el => {
-          Array.from(el.children).forEach(child => bodyWrap.appendChild(child.cloneNode(true)));
-        });
-        const body = htmlNodesToWpText(bodyWrap);
+        const toText = els => {
+          const wrap = doc.createElement('div');
+          els.forEach(el => {
+            Array.from(el.children).forEach(child => wrap.appendChild(child.cloneNode(true)));
+          });
+          return htmlNodesToWpText(wrap);
+        };
+
+        // A long article spills out of its column: the NEXT column starts with
+        // continuation body blocks that sit before its own <h2>, and a column with no
+        // <h2> at all is pure continuation. Either way those blocks belong to the
+        // previous article — filing them under this column's heading is what put the
+        // wrong links (and the wrong "read more" URLs) under the wrong story.
+        let carryOver = [];
+        if (h2) {
+          const own = [];
+          bodyEls.forEach(d => {
+            // DOCUMENT_POSITION_PRECEDING === 2 → d comes before the heading
+            if (h2.compareDocumentPosition(d) & 2) carryOver.push(d);
+            else own.push(d);
+          });
+          bodyEls = own;
+        } else if (arts.length) {
+          carryOver = bodyEls;
+          bodyEls = [];
+        }
+        if (carryOver.length) {
+          const extra = toText(carryOver);
+          if (extra) {
+            if (arts.length) {
+              const prev = arts[arts.length - 1];
+              prev.body = prev.body ? prev.body + '\n\n' + extra : extra;
+            } else {
+              bodyEls = carryOver.concat(bodyEls);
+            }
+          }
+        }
+
+        const body = toText(bodyEls);
 
         // Skip if both heading and body are empty (e.g., pure image column)
         if (!heading && !body) return;
@@ -806,7 +893,10 @@
         const inner = docxScopeToHtml(innerScope, rels, true);
         if (url) {
           const href = url.replace(/"/g, '&quot;'); // & already encoded in rels Target
-          html += `<a href="${href}" target="_blank" rel="noopener">${inner}</a>`;
+          // Only real web links open in a new tab. mailto:/tel: must not carry
+          // target="_blank" — it opens a dead blank tab next to the mail client.
+          const extra = /^https?:\/\//i.test(url) ? ' target="_blank" rel="noopener"' : '';
+          html += `<a href="${href}"${extra}>${inner}</a>`;
         } else {
           html += inner;
         }
@@ -904,7 +994,37 @@
     }
     if (cur) arts.push(cur);
 
-    return arts.map(a => ({ heading: a.heading, body: serializeDocxBlocks(a.blocks) }));
+    // The issue title ("July 30 Issue of Elevate") is bold 18pt too, so it reads as a
+    // heading and drags the SEO/email metadata block in as article #1. Left in, that
+    // block gets published as the first row of the page. Drop leading metadata
+    // articles only — never anything after real content has started.
+    const out = arts.map(a => ({ heading: a.heading, body: serializeDocxBlocks(a.blocks) }));
+    while (out.length && isIssueMetaArticle(out[0].heading, out[0].body)) out.shift();
+    return out;
+  }
+
+  // Metadata block, not an article. Two independent signals, either is enough:
+  //  - the body carries 2+ of the writer's metadata labels
+  //  - the heading is an issue title ("Elevate June 15 Issue", "July 30 Issue of Elevate")
+  const META_LABELS = [
+    /meta\s*description/i,
+    /linked\s*in[^\n<]{0,30}description/i,
+    /(?:email\s*)?subject\s*line/i,
+    /(?:email\s*)?preview\s*text/i,
+    /pre-?header/i,
+    /social\s*(?:media\s*)?(?:post|copy|description)/i,
+  ];
+  // Issue title: a short date/brand label, not a headline. Kept strict so a real
+  // article that happens to contain the word "issue" never matches.
+  const ISSUE_MONTH = /^(?:the )?(?:elevate |newsletter )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?(?:,? ?\d{4})? (?:issue|edition)(?: of (?:elevate|the newsletter))?$/i;
+  const ISSUE_BRAND = /^(?:the )?(?:elevate|newsletter) (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?(?:,? ?\d{4})? (?:issue|edition)$/i;
+  function isIssueMetaArticle(heading, body) {
+    const h = String(heading || '').replace(/\s+/g, ' ').trim();
+    if (ISSUE_MONTH.test(h) || ISSUE_BRAND.test(h)) return true;
+    const text = String(body || '').replace(/<[^>]*>/g, ' ');
+    let hits = 0;
+    for (const re of META_LABELS) if (re.test(text)) hits++;
+    return hits >= 2;
   }
 
   // --- Heading matching (the doc's article order can differ from the HTML's) ---
@@ -1115,7 +1235,7 @@
       div.innerHTML = `
         <div class="article-head">
           <span class="badge">${idx + 1}</span>
-          <input type="text" class="grow heading-input" placeholder="Article heading" value="${a.heading.replace(/"/g, '&quot;')}">
+          <input type="text" class="grow heading-input" placeholder="Article heading" value="${escapeForTextarea(a.heading).replace(/"/g, '&quot;')}">
           <button class="tiny secondary up-btn" title="Move up">↑</button>
           <button class="tiny secondary down-btn" title="Move down">↓</button>
           <button class="tiny danger del-btn" title="Remove">✕</button>
@@ -1218,6 +1338,11 @@
     articles.filter(a => a.rowIndex === rowIndex).forEach(a => Object.assign(a, patch));
   }
 
+  // Escapes text that is about to be dropped into markup as-is.
+  function escapeHeading(s) {
+    return (s || '').replace(/&(?![a-zA-Z#0-9]+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   function escapeForTextarea(s) {
     return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -1266,12 +1391,197 @@
     return Array.from(map.values()).sort((a, b) => a.idx - b.idx);
   }
 
+  // ----- Link & UTM audit -----
+  // The newsletter's links are the part that gets bounced back most often: a stale
+  // utm_content from last month's issue, a tracking link that lost its parameters,
+  // or a link that quietly disappeared between the email and the page. This checks
+  // the generated output against the source and reports anything suspect.
+
+  // Chrome, unsubscribe, and merge-tag links are email plumbing, not page content.
+  const IGNORED_LINK_RE = /unsubscribe|list-manage|campaign-archive|view.?in.?browser|mailchi\.mp|\{\{|%%|^#/i;
+  // Footer social icons point at a bare profile ("/weltonhong", "/in/welton-hong/",
+  // "/@Ringringmarketing"). They are email chrome and never make it onto the page, so
+  // the audit must not report them as dropped. A link to a specific post still counts.
+  const SOCIAL_PROFILE_RE = /^https?:\/\/(?:www\.)?(?:facebook|twitter|x|linkedin|instagram|youtube|tiktok|pinterest|threads)\.com\/(?:in\/|company\/|@)?[A-Za-z0-9._-]+\/?$/i;
+  const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+  const TRACKED_HOST_RE = /(^|\.)(ringringmarketing|seniorcaremarketingmax)\.com$/i;
+
+  function decodeHref(h) {
+    return String(h || '').replace(/&amp;/gi, '&');
+  }
+
+  // Two hrefs are the same link even if their tracking tags differ — otherwise
+  // rewriting the issue tag makes every tracked link look like it went missing.
+  function linkIdentity(href) {
+    const url = decodeHref(href).trim().toLowerCase().replace(/\/+$/, '');
+    const i = url.indexOf('?');
+    if (i < 0) return url;
+    const kept = url.slice(i + 1).split('&').filter(p => p && !/^utm_/.test(p));
+    return url.slice(0, i) + (kept.length ? '?' + kept.join('&') : '');
+  }
+
+  function parseQuery(href) {
+    const q = {};
+    const i = decodeHref(href).indexOf('?');
+    if (i < 0) return q;
+    decodeHref(href).slice(i + 1).split('&').forEach(pair => {
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const k = eq < 0 ? pair : pair.slice(0, eq);
+      const v = eq < 0 ? '' : pair.slice(eq + 1);
+      if (k) q[k.toLowerCase()] = v;
+    });
+    return q;
+  }
+
+  function hostOf(href) {
+    const m = decodeHref(href).match(/^https?:\/\/([^\/?#]+)/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // Pull every link out of the article bodies, tagged with the article it sits in.
+  function collectOutputLinks() {
+    const links = [];
+    articles.forEach(a => {
+      const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+      let m;
+      while ((m = re.exec(a.body || ''))) {
+        const hm = m[1].match(/href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/i);
+        const href = hm ? (hm[1] != null ? hm[1] : hm[2]) : '';
+        if (!href || IGNORED_LINK_RE.test(href)) continue;
+        links.push({
+          href,
+          text: m[2].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
+          article: a.heading || '(untitled)',
+        });
+      }
+    });
+    return links;
+  }
+
+  // The issue tag every tracked link should carry, e.g. "elevate-august-2026".
+  // Guessed from whatever the links already agree on, so the field starts populated.
+  function guessIssueTag(links) {
+    const counts = new Map();
+    links.forEach(l => {
+      const v = parseQuery(l.href).utm_content;
+      if (v) counts.set(v, (counts.get(v) || 0) + 1);
+    });
+    let best = '', bestN = 0;
+    counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+    return best;
+  }
+
+  function auditLinks(expectedTag) {
+    const links = collectOutputLinks();
+    const issues = [];
+    const seenHrefs = new Set(links.map(l => linkIdentity(l.href)));
+
+    links.forEach(l => {
+      const raw = String(l.href);
+      const url = decodeHref(raw);
+      const host = hostOf(url);
+      const q = parseQuery(url);
+      const where = l.article;
+
+      // Encoding / typo damage
+      if (/&amp;amp;/i.test(raw)) issues.push({ level: 'error', where, href: raw, msg: 'Ampersand is double-encoded (&amp;amp;) — the parameters after it will be read as literal text.' });
+      if (/\s/.test(url)) issues.push({ level: 'error', where, href: raw, msg: 'URL contains a space — it will break when pasted into WordPress.' });
+      if (/\?[^?]*\?/.test(url)) issues.push({ level: 'error', where, href: raw, msg: 'URL has two "?" — the second query string is ignored.' });
+      if (/(\?&|&&|&$|\?$)/.test(url)) issues.push({ level: 'warn', where, href: raw, msg: 'Query string has an empty parameter slot (stray "?" or "&").' });
+      if (/[.,;:)\]]$/.test(url)) issues.push({ level: 'warn', where, href: raw, msg: 'URL ends in punctuation — sentence punctuation was probably swallowed into the link.' });
+
+      if (/^https?:/i.test(url) && TRACKED_HOST_RE.test(host)) {
+        if (/^http:/i.test(url)) issues.push({ level: 'warn', where, href: raw, msg: 'Uses http:// instead of https://.' });
+        const missing = UTM_KEYS.filter(k => !q[k]);
+        if (missing.length === UTM_KEYS.length) {
+          issues.push({ level: 'error', where, href: raw, msg: 'Tracked link with no UTM parameters at all — this visit will not be attributed to the newsletter.' });
+        } else if (missing.length) {
+          issues.push({ level: 'error', where, href: raw, msg: 'Missing UTM parameter' + (missing.length > 1 ? 's' : '') + ': ' + missing.join(', ') + '.' });
+        }
+        if (expectedTag && q.utm_content && q.utm_content !== expectedTag) {
+          issues.push({ level: 'error', where, href: raw, msg: 'utm_content is "' + q.utm_content + '" but this issue is "' + expectedTag + '" — stale tag from a previous issue.' });
+        }
+      }
+    });
+
+    // Links that were in the source but never made it into the output.
+    const dropped = [];
+    sourceLinks.forEach(sl => {
+      const url = linkIdentity(sl.href);
+      if (!seenHrefs.has(url)) dropped.push(sl);
+    });
+    const droppedUnique = [];
+    const seenDrop = new Set();
+    dropped.forEach(d => {
+      const u = linkIdentity(d.href);
+      if (seenDrop.has(u)) return;
+      seenDrop.add(u);
+      droppedUnique.push(d);
+    });
+    droppedUnique.forEach(d => {
+      issues.push({ level: 'warn', where: '(source)', href: d.href, msg: 'This link was in the source newsletter but is not in the generated code' + (d.text ? ' (linked text: "' + d.text + '")' : '') + '.' });
+    });
+
+    const tags = new Set();
+    links.forEach(l => { const v = parseQuery(l.href).utm_content; if (v) tags.add(v); });
+    if (tags.size > 1) {
+      issues.push({ level: 'error', where: '(all links)', href: '', msg: 'Links carry ' + tags.size + ' different utm_content values: ' + Array.from(tags).join(', ') + '. They should all match this issue.' });
+    }
+
+    return { links, issues };
+  }
+
+  // Rewrite utm_content on every tracked link so one edit fixes the whole issue.
+  function applyIssueTag(tag) {
+    if (!tag) return 0;
+    let changed = 0;
+    articles.forEach(a => {
+      a.body = (a.body || '').replace(/href\s*=\s*"([^"]*)"/gi, (full, href) => {
+        if (!TRACKED_HOST_RE.test(hostOf(href))) return full;
+        const q = parseQuery(href);
+        if (!q.utm_content || q.utm_content === tag) return full;
+        const next = href.replace(/(utm_content=)[^&"]*/i, '$1' + tag);
+        if (next !== href) changed++;
+        return 'href="' + next + '"';
+      });
+    });
+    return changed;
+  }
+
+  function renderLinkAudit(expectedTag) {
+    const box = $('linkAudit');
+    const { links, issues } = auditLinks(expectedTag);
+    if (!links.length && !sourceLinks.length) { box.innerHTML = ''; return; }
+    const errors = issues.filter(i => i.level === 'error');
+    const warns = issues.filter(i => i.level === 'warn');
+    const esc = escapeForTextarea;
+    let html = '<div class="audit-head">' +
+      (errors.length
+        ? '<span class="audit-pill bad">' + errors.length + ' problem' + (errors.length === 1 ? '' : 's') + '</span>'
+        : (issues.length ? '' : '<span class="audit-pill good">Links look clean</span>')) +
+      (warns.length ? '<span class="audit-pill warn">' + warns.length + ' to check</span>' : '') +
+      '<span class="audit-count">' + links.length + ' link' + (links.length === 1 ? '' : 's') + ' in output</span>' +
+      '</div>';
+    if (issues.length) {
+      html += '<ul class="audit-list">';
+      issues.forEach(i => {
+        html += '<li class="' + i.level + '"><span class="audit-where">' + esc(i.where) + '</span>' +
+          esc(i.msg) + (i.href ? '<code>' + esc(decodeHref(i.href)) + '</code>' : '') + '</li>';
+      });
+      html += '</ul>';
+    }
+    box.innerHTML = html;
+  }
+
   // ----- Generation -----
   function renderArticleShortcode(a, whiteText) {
     const cls = whiteText ? ' el_class="pw text-white"' : '';
     const parts = [];
     if (a.heading) {
-      parts.push(`[vc_column_text css=""${cls}]\n<h2>${a.heading}</h2>\n[/vc_column_text]`);
+      // Headings come from Word/HTML as plain text, so a bare "&" in a name like
+      // "Olson Funeral & Cremation" has to be escaped before it lands in markup.
+      parts.push(`[vc_column_text css=""${cls}]\n<h2>${escapeHeading(a.heading)}</h2>\n[/vc_column_text]`);
     }
     if (a.body) {
       // Strip link bold again at output time — guarantees clean links even if the body
@@ -1436,7 +1746,30 @@
   $('generateBtn').addEventListener('click', () => {
     const code = generate();
     $('output').value = code;
+    // Fill the issue tag from the links themselves the first time, then audit.
+    const tagEl = $('issueTag');
+    if (!tagEl.value.trim()) tagEl.value = guessIssueTag(collectOutputLinks());
+    renderLinkAudit(tagEl.value.trim());
     $('outStatus').textContent = `Generated ${code.length.toLocaleString()} characters.`;
+  });
+
+  $('issueTag').addEventListener('input', () => {
+    if ($('output').value) renderLinkAudit($('issueTag').value.trim());
+  });
+
+  $('applyTagBtn').addEventListener('click', () => {
+    const tag = $('issueTag').value.trim();
+    const status = $('outStatus');
+    if (!tag) { status.textContent = 'Enter an issue tag first.'; return; }
+    const n = applyIssueTag(tag);
+    renderArticles();
+    renderLayoutPreview();
+    const code = generate();
+    $('output').value = code;
+    renderLinkAudit(tag);
+    status.textContent = n
+      ? `Rewrote utm_content on ${n} link${n === 1 ? '' : 's'} to "${tag}".`
+      : `No links needed changing — every tracked link already uses "${tag}".`;
   });
 
   $('copyBtn').addEventListener('click', async () => {

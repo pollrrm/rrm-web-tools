@@ -179,6 +179,34 @@
     line-height: 1.4;
     color: #e6e6e6;
   }
+  /* Rendered content preview — mirrors how WP will output the post body */
+  .content-block .rendered {
+    padding: 7px 9px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #e6e6e6;
+  }
+  .content-block .rendered p { margin: 0 0 7px; }
+  .content-block .rendered p:last-child { margin-bottom: 0; }
+  .content-block .rendered ul,
+  .content-block .rendered ol { margin: 0 0 7px; padding-left: 19px; }
+  .content-block .rendered li { margin-bottom: 3px; }
+  .content-block .rendered strong { color: #fff; font-weight: 700; }
+  .content-block .rendered em { color: #dcd2ff; }
+  .content-block .rendered a { color: #7fb0ff; word-break: break-word; }
+  .content-block .rendered code {
+    background: #0b0d11; border: 1px solid #2a2f3a; border-radius: 3px;
+    padding: 0 3px; font-size: 10px; color: #6cd17b;
+  }
+  .fmt-note { color: #6a7180; font-style: italic; }
+  .paste-info {
+    display: none;
+    font-size: 10.5px;
+    color: #6cd17b;
+    margin-top: 5px;
+  }
   .filename {
     font-size: 10px;
     color: #6cd17b;
@@ -222,12 +250,114 @@
     margin-right: 6px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Notes & checklist */
+  details.notes {
+    background: #181b22;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  details.notes summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 9px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #c8a8ff;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    user-select: none;
+  }
+  details.notes summary::-webkit-details-marker { display: none; }
+  details.notes summary .chevron {
+    margin-left: auto;
+    color: #8a93a3;
+    transition: transform .15s ease;
+    font-size: 10px;
+  }
+  details.notes[open] summary .chevron { transform: rotate(90deg); }
+  details.notes summary:hover { background: #1d212a; }
+  .notes-body {
+    padding: 4px 12px 12px;
+    border-top: 1px solid #262a33;
+  }
+  .notes-body h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #8a93a3;
+    margin: 12px 0 6px;
+  }
+  .notes-body p { margin: 0 0 8px; color: #b8bdc8; font-size: 11.5px; }
+  .notes-body ol, .notes-body ul { margin: 0; padding-left: 18px; }
+  .notes-body li { margin-bottom: 7px; color: #d5d9e0; font-size: 11.5px; line-height: 1.5; }
+  .notes-body li strong { color: #fff; }
+  .notes-body .warn-chip {
+    display: inline-block;
+    background: #3a2a1a;
+    color: #ffb04d;
+    border: 1px solid #c08a3e;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .notes-body code {
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    color: #6cd17b;
+  }
 </style>
 </head>
 <body>
 
 <h1>RRM WP Helper <span class="scope" id="nicheScope">—</span></h1>
 <p class="subtitle">Paste the email, pick the niche, then click <strong>Fill This Post</strong> on the active New Post page.</p>
+
+<details class="notes">
+  <summary>📋 Notes &amp; checklist — read before first use <span class="chevron">▶</span></summary>
+  <div class="notes-body">
+
+    <h4>What this does</h4>
+    <p>Reads the video-posting email you paste, extracts each video's title, content, YouTube ID, meta description, and thumbnail, then fills a WordPress <strong>New Post</strong> page for you — title, body, Yoast meta description, ACF YouTube ID, category, and author. It does <strong>not</strong> upload the thumbnail or hit Publish; you finish those by hand.</p>
+
+    <h4>Before you click Fill</h4>
+    <ol>
+      <li><span class="warn-chip">Important</span> Set the WP body editor to <strong>Code</strong>, not <strong>Visual</strong>. The content fills into the Code/Text view.</li>
+      <li>Make sure the pasted email includes the <strong>Niche</strong> label (e.g. <em>Funeral Homes</em>, <em>Home Improvement</em>, <em>Home Care</em>) so it lands under the right site — only the selected niche's videos show up.</li>
+      <li>Pick the matching <strong>Niche</strong> in the dropdown above (it auto-switches to match the tab you're on).</li>
+      <li>Open the <strong>New Post</strong> page on that niche's site. The status bar turns green when Fill is ready.</li>
+    </ol>
+
+    <h4>Step by step</h4>
+    <ol>
+      <li>Paste the full task email into the box below and click <strong>Extract</strong>. Copy straight from Outlook — <strong>bullets, bold, italic and links are preserved</strong>. Check the card's formatted preview before filling.</li>
+      <li>Open a <strong>New Post</strong> page on the correct site and switch the editor to <strong>Code</strong>.</li>
+      <li>Click <strong>Fill This Post</strong> on the card you want.</li>
+      <li><span class="warn-chip">Wait</span> Don't click or type anything until you see <strong>Filled ✓</strong> — the extension is filling several fields in sequence and interrupting it can leave fields blank.</li>
+      <li><strong>Check the content</strong> — compare the filled body against the email to confirm it matches and nothing was cut off.</li>
+      <li>Click <strong>Download Thumbnail</strong>, then <strong>manually upload</strong> it as the post's Featured Image.</li>
+      <li>Set the <strong>Publish date</strong> to the email's date at <strong>5:00 AM</strong> (per SOP), then Publish or save as draft.</li>
+    </ol>
+
+    <h4>Good to know</h4>
+    <ul>
+      <li><strong>Formatting is preserved.</strong> Bulleted lists, bold, italic and hyperlinks from the email carry through to the post as real <code>&lt;ul&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code> and <code>&lt;a&gt;</code> markup. The Yoast meta description is always plain text.</li>
+      <li>Author is auto-set to <strong>Welton Hong</strong> (only if the Author box is enabled in Screen Options).</li>
+      <li>Everything runs locally in your browser — no data is sent anywhere.</li>
+      <li>Funeral Homes posts get both <code>Funeral</code> and <code>Videos</code> categories; the others get <code>Videos</code>.</li>
+    </ul>
+
+  </div>
+</details>
 
 <div class="niche-row">
   <label for="nicheSelect">Niche:</label>
@@ -237,6 +367,7 @@
 <div id="tabStatus" class="status-line">Checking active tab…</div>
 
 <textarea id="bulk" placeholder="Paste the full task email here. Only the selected niche's videos will appear."></textarea>
+<div id="pasteInfo" class="paste-info"></div>
 <button id="extractBtn">Extract</button>
 <div id="bulkErr" class="err"></div>
 

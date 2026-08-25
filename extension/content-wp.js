@@ -569,18 +569,44 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event('keyup', { bubbles: true }));
 }
 
-// Convert plain text to HTML paragraphs. Preserves any HTML already present.
-// Every line break — single or double — becomes a paragraph boundary, so we
-// emit <p>...</p>\n<p>...</p> rather than <p>...<br>...</p>. Used to write
-// into the #content textarea so TinyMCE renders the right blocks on mount.
+// Convert plain text to HTML paragraphs. Preserves any HTML already present —
+// the side panel now sends fully-rendered HTML (lists, bold, italic, links),
+// which passes straight through this guard.
+//
+// For the plain-text path (the YT tool's "Send to ..." flow), every line break
+// becomes a paragraph boundary, except runs of "* item" / "1. item" lines,
+// which become real <ul>/<ol> lists so bulleted emails render correctly.
 function toHtml(text) {
   if (/<\w+/.test(text)) return text;
-  return text
-    .split(/\n+/) // any run of newlines = paragraph boundary
-    .map(para => para.trim())
-    .filter(para => para.length > 0)
-    .map(para => `<p>${para}</p>`)
-    .join('\n');
+
+  const lines = String(text).split(/\r?\n/);
+  const out = [];
+  let list = null; // { tag, items }
+
+  const flushList = () => {
+    if (!list) return;
+    out.push(`<${list.tag}>\n${list.items.map(i => `<li>${i}</li>`).join('\n')}\n</${list.tag}>`);
+    list = null;
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushList(); continue; }
+
+    const ul = line.match(/^[*-]\s+(.*)$/);
+    const ol = line.match(/^\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const tag = ul ? 'ul' : 'ol';
+      if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+      list.items.push((ul ? ul[1] : ol[1]).trim());
+      continue;
+    }
+
+    flushList();
+    out.push(`<p>${line}</p>`);
+  }
+  flushList();
+  return out.join('\n');
 }
 
 // Best-effort TinyMCE sync, in the background. Other fill steps don't await
