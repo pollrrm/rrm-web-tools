@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RRM WP Helper",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor. Includes a side panel for filling the active New Post page directly. Supports rrmathome.com (Home Improvement), seniorcaremarketingmax.com (Home Care), and ringringmarketing.com (Funeral Homes).",
   "permissions": ["storage", "sidePanel", "tabs"],
   "host_permissions": [

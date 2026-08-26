@@ -127,10 +127,11 @@ function refreshFillButtons() {
 
 // ---- Rich paste → lightweight Markdown ----------------------------------
 // Outlook/Word/SharePoint put real HTML on the clipboard as "text/html". A
-// plain <textarea> throws it away, so bullets, bold, italic and links were
+// plain <textarea> throws it away, so bullets, bold and links were
 // lost before the parser ever saw them. We intercept the paste, walk the HTML,
 // and emit a minimal Markdown subset:
-//     **bold**  _italic_  * bullet  1. ordered  [text](url)
+//     **bold**  * bullet  1. ordered  [text](url)
+// Italic is intentionally not emitted (see the EM/I case below).
 // The label parser below still works because labels stay at line start and
 // demark() strips the markers wherever a raw value is needed.
 
@@ -205,8 +206,11 @@ function htmlNodeToMarkdown(node, ctx = { listStack: [] }) {
       case 'STRONG': case 'B':
         out += wrapInline(htmlNodeToMarkdown(child, ctx), '**');
         break;
+      // Italic is deliberately DROPPED. The content in these emails arrives
+      // fully italicized as a house style, so it carries no meaning — keeping
+      // it would wrap the whole post body in <em>. Treated as plain inline text.
       case 'EM': case 'I':
-        out += wrapInline(htmlNodeToMarkdown(child, ctx), '_');
+        out += htmlNodeToMarkdown(child, ctx);
         break;
       case 'CODE': case 'TT':
         out += wrapInline(htmlNodeToMarkdown(child, ctx), '`');
@@ -294,23 +298,23 @@ function htmlToMarkdown(html) {
 
 // ---- Markdown → WordPress HTML ------------------------------------------
 // Produces the HTML written into the WP #content box: real <ul>/<ol> lists,
-// <strong>/<em>, and <a href>. Everything else becomes a <p>.
+// <strong>, and <a href>. Everything else becomes a <p>. Italic is dropped.
 function mdInlineToHtml(s) {
   // Escape HTML first so email text can't inject markup, then apply markers.
   let t = String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // Protect escaped markers (\* \_) before interpreting the real ones.
-  t = t.replace(/\\([*_`\[\]])/g, (m, c) => ` ${c.charCodeAt(0)} `);
+  t = t.replace(/\\([*_`\[\]])/g, (m, c) => `\u0000${c.charCodeAt(0)}\u0000`);
   t = t
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
       (m, label, href) => `<a href="${href.replace(/"/g, '&quot;')}">${label}</a>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/(^|[\s(])_([^_]+)_(?=[\s.,;:!?)]|$)/g, '$1<em>$2</em>');
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  // No italic pass — see the EM/I note above; underscores stay literal.
   // Auto-link bare URLs that aren't already inside an href.
   t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
     (m, pre, url) => `${pre}<a href="${url.replace(/"/g, '&quot;')}">${url}</a>`);
-  return t.replace(/ (\d+) /g, (m, code) => String.fromCharCode(+code));
+  return t.replace(/\u0000(\d+)\u0000/g, (m, code) => String.fromCharCode(+code));
 }
 
 function markdownToHtml(md) {
@@ -382,7 +386,7 @@ function toMetaDescription(text) {
   // below breaks them apart ("https://www. example. com").
   const urls = [];
   const parked = demark(text) // drop **/_/`/[text](url) markers first
-    .replace(/https?:\/\/\S+/g, (m) => ` ${urls.push(m) - 1} `);
+    .replace(/https?:\/\/\S+/g, (m) => `\u0000${urls.push(m) - 1}\u0000`);
 
   return parked
     .replace(/\s+/g, ' ')
@@ -390,7 +394,7 @@ function toMetaDescription(text) {
     // decimals stay intact ("$2.2 Million", not "$2. 2 Million").
     .replace(/([.!?])(?=[A-Za-z])/g, '$1 ')
     .trim()
-    .replace(/ (\d+) /g, (m, i) => urls[+i]);
+    .replace(/\u0000(\d+)\u0000/g, (m, i) => urls[+i]);
 }
 
 // Parses a "Date of Posting" string from the email into a structured object.
@@ -619,7 +623,7 @@ async function fillCurrentTab(entry, btn) {
   if (!tab || !tab.id) return;
   const niche = getNiche();
   const payload = {
-    // Send rendered HTML so WP gets real <ul>/<strong>/<em>/<a> markup.
+    // Send rendered HTML so WP gets real <ul>/<strong>/<a> markup.
     // content-wp.js passes through anything that already contains tags.
     title: demark(entry.title),
     content: entry.content ? markdownToHtml(entry.content) : '',

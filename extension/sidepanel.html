@@ -194,7 +194,6 @@
   .content-block .rendered ol { margin: 0 0 7px; padding-left: 19px; }
   .content-block .rendered li { margin-bottom: 3px; }
   .content-block .rendered strong { color: #fff; font-weight: 700; }
-  .content-block .rendered em { color: #dcd2ff; }
   .content-block .rendered a { color: #7fb0ff; word-break: break-word; }
   .content-block .rendered code {
     background: #0b0d11; border: 1px solid #2a2f3a; border-radius: 3px;
@@ -339,7 +338,7 @@
 
     <h4>Step by step</h4>
     <ol>
-      <li>Paste the full task email into the box below and click <strong>Extract</strong>. Copy straight from Outlook — <strong>bullets, bold, italic and links are preserved</strong>. Check the card's formatted preview before filling.</li>
+      <li>Paste the full task email into the box below and click <strong>Extract</strong>. Copy straight from Outlook — <strong>bullets, bold and links are preserved</strong>. Check the card's formatted preview before filling.</li>
       <li>Open a <strong>New Post</strong> page on the correct site and switch the editor to <strong>Code</strong>.</li>
       <li>Click <strong>Fill This Post</strong> on the card you want.</li>
       <li><span class="warn-chip">Wait</span> Don't click or type anything until you see <strong>Filled ✓</strong> — the extension is filling several fields in sequence and interrupting it can leave fields blank.</li>
@@ -350,7 +349,7 @@
 
     <h4>Good to know</h4>
     <ul>
-      <li><strong>Formatting is preserved.</strong> Bulleted lists, bold, italic and hyperlinks from the email carry through to the post as real <code>&lt;ul&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code> and <code>&lt;a&gt;</code> markup. The Yoast meta description is always plain text.</li>
+      <li><strong>Formatting is preserved.</strong> Bulleted lists, bold and hyperlinks from the email carry through to the post as real <code>&lt;ul&gt;</code>, <code>&lt;strong&gt;</code> and <code>&lt;a&gt;</code> markup. <strong>Italic is intentionally dropped</strong> — these emails italicize the whole content block as a house style, so it would just wrap the entire post in <code>&lt;em&gt;</code>. The Yoast meta description is always plain text.</li>
       <li>Author is auto-set to <strong>Welton Hong</strong> (only if the Author box is enabled in Screen Options).</li>
       <li>Everything runs locally in your browser — no data is sent anywhere.</li>
       <li>Funeral Homes posts get both <code>Funeral</code> and <code>Videos</code> categories; the others get <code>Videos</code>.</li>
