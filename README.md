@@ -354,10 +354,10 @@ The block ships hidden (`display:none`) with `data-start` / `data-end` attribute
 
 ### What it does
 
-A general-purpose, site-agnostic version of the scheduling logic: it doesn't build a promo, it just makes **any element appear and disappear on a date-time window**, with no plugin. You get two copy-paste outputs:
+A general-purpose, site-agnostic version of the scheduling logic: it makes content **appear and disappear on a date-time window**, with no plugin. Two ways to use it:
 
-1. A **CSS class** to add to the element's class list (`<name> <name>S<YYYYMMDDHHMMSS> <name>E<…>`).
-2. A **one-time `<style>`+`<script>` snippet** to paste once on the page, which hides those elements by default and reveals one only while "now" is inside its window.
+- **Paste content** (e.g. a holiday-hours notice) into the Content field → get a **ready-to-paste block**: your content wrapped in the scheduled class *plus* the scheduler, self-contained. Paste it once wherever it should appear and it shows/hides itself — nothing else to install. (For a holiday notice, set **End** to the holiday and leave **Start** blank to show it from now until then.)
+- **Or schedule an element you already have** (Advanced section): grab just the **CSS class** (`<name> <name>S<YYYYMMDDHHMMSS> <name>E<…>`) to add to that element, plus the **one-time `<style>`+`<script>` snippet** to paste once on the page.
 
 ### Settings
 
@@ -369,8 +369,8 @@ A general-purpose, site-agnostic version of the scheduling logic: it doesn't bui
 1. Pick the timezone and (optionally) a class name.
 2. Set **Start**/**End** as `MM/DD/YYYY hh:mm:ss` (24-hour; am/pm and seconds optional; date-only = whole day; blank start = show from the beginning; blank end = never ends). Fields default to today's whole-day window in the chosen timezone.
 3. Watch the live **Now in this timezone** clock and the **status** line (Showing now / Hidden — starts… / window ended…). The **Test: show now (1 hr)** button sets a window that's live immediately for a quick end-to-end check.
-4. **Copy** the CSS class onto the element — its `class="…"` attribute, or your page builder's CSS-class / extra-class field.
-5. **Copy** the one-time snippet and paste it once anywhere on the page — a site-wide header/footer code area, or any HTML / embed / code block. Clear the cache after publishing.
+4. Either paste your content into the **Content** field and **Copy the ready-to-paste block** (paste it wherever it should appear — self-contained), **or** use the **Advanced** section to copy the CSS class (for an element you already have) + the one-time snippet (paste once on the page).
+5. Clear the site/page cache after publishing.
 
 ### Notes
 

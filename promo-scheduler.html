@@ -60,10 +60,25 @@
   label { display: block; font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; font-weight: 600; }
   label:first-of-type { margin-top: 0; }
   label .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
-  input[type="text"], select {
+  input[type="text"], select, textarea {
     width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-strong);
     border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit;
   }
+  textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+
+  /* WYSIWYG content editor */
+  .wysiwyg { border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--input-bg); }
+  .wtoolbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 6px; background: var(--panel-2); border-bottom: 1px solid var(--border-strong); }
+  .wtoolbar button { background: var(--secondary); color: var(--text-muted); border: 0; border-radius: 4px; padding: 4px 9px; font-size: 12px; line-height: 1.2; cursor: pointer; font-family: inherit; }
+  .wtoolbar button:hover { background: var(--secondary-hover); color: var(--text); }
+  .wtoolbar .wtoggle { margin-left: auto; }
+  .wsep { width: 1px; align-self: stretch; background: var(--border-strong); margin: 2px 3px; }
+  .weditor { min-height: 130px; max-height: 340px; overflow-y: auto; padding: 10px 12px; color: var(--text); font-size: 14px; line-height: 1.55; outline: none; }
+  .weditor:empty:before { content: attr(data-placeholder); color: var(--text-dim); }
+  .weditor h2 { font-size: 20px; margin: .5em 0 .3em; } .weditor h3 { font-size: 16px; margin: .5em 0 .3em; }
+  .weditor p { margin: .5em 0; } .weditor ul, .weditor ol { padding-left: 22px; margin: .5em 0; }
+  .weditor a { color: var(--accent); }
+  .whtml { min-height: 150px; border: 0; border-radius: 0; }
   input:focus, select:focus { outline: none; border-color: var(--accent); }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
@@ -103,7 +118,7 @@
 
 <a class="back-link" href="./index.html">&larr; All Tools</a>
 <h1>Promo Scheduler</h1>
-<p class="subtitle">Show or hide <strong>any element on any site</strong> during a date/time window &mdash; no plugin. Pick the window, copy the <strong>CSS class</strong> onto the element, and paste the <strong>one-time snippet</strong> once on the page. Works anywhere you can add a class to an element and drop a small snippet of code on the page.</p>
+<p class="subtitle">Show content only during a date/time window &mdash; no plugin. Paste what you want scheduled (e.g. a holiday-hours notice) and get a <strong>ready-to-paste block</strong> that shows and hides itself &mdash; or just grab a <strong>CSS class</strong> to put on an element you already have. Any site, any timezone.</p>
 
 <div class="card">
   <h2>Settings</h2>
@@ -145,26 +160,65 @@
 </div>
 
 <div class="card">
-  <h2><span>1. CSS class &mdash; put on the element</span> <button class="copy-btn" id="copyClass">Copy</button></h2>
-  <pre id="classOut">&mdash;</pre>
-  <p class="field-note">Add these to the element's <strong>class list</strong> &mdash; its <code>class="&hellip;"</code> attribute, or your page builder's CSS-class / extra-class field.</p>
+  <h2>Content to display <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--text-dim);">&mdash; optional</span></h2>
+  <div class="wysiwyg">
+    <div class="wtoolbar" id="wtoolbar">
+      <button type="button" data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
+      <button type="button" data-cmd="formatBlock" data-val="H3" title="Heading 3">H3</button>
+      <button type="button" data-cmd="formatBlock" data-val="P" title="Normal text">&para;</button>
+      <span class="wsep"></span>
+      <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
+      <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
+      <span class="wsep"></span>
+      <button type="button" data-cmd="insertUnorderedList" title="Bulleted list">&bull; List</button>
+      <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+      <button type="button" data-cmd="createLink" title="Add link">Link</button>
+      <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
+      <button type="button" data-cmd="removeFormat" title="Clear formatting">Clear</button>
+      <button type="button" class="wtoggle" id="toggleMode" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
+    </div>
+    <div class="weditor" id="contentEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste content — e.g. a holiday-hours notice."></div>
+    <textarea class="whtml" id="contentHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
+  </div>
+  <p class="field-note">Format visually, or switch to <strong>HTML</strong> to paste/tweak code. Visual output is cleaned to semantic HTML (no inline styles) so it adopts each site's theme. Leave blank if you only want a class for an element you already have.</p>
 </div>
 
 <div class="card">
-  <h2><span>2. One-time snippet &mdash; paste once on the page</span> <button class="copy-btn" id="copySnippet">Copy</button></h2>
-  <pre id="snippetOut">&mdash;</pre>
+  <h2><span>Ready-to-paste block</span> <button class="copy-btn" id="copyBlock">Copy</button></h2>
+  <pre id="blockOut">&mdash;</pre>
+  <p class="field-note">Paste this wherever you want it to appear &mdash; it shows and hides itself on schedule, nothing else to install. <em>If your site strips inline scripts from content areas, use the Advanced section instead.</em></p>
+</div>
+
+<div class="card">
   <details>
-    <summary>How to install &amp; how it works</summary>
-    <ol>
-      <li>Paste the snippet <strong>once</strong> anywhere on the page &mdash; a site-wide header/footer code area, or any HTML / embed / code block. It controls every element that carries the class above.</li>
-      <li>It hides those elements by default and reveals one only while "now" (in the chosen timezone) is inside that element's window. Because it runs in the browser, page caching can't keep an expired promo visible.</li>
-      <li>Multiple elements each schedule independently &mdash; give each its own window. Overlapping windows show at the same time.</li>
-      <li>Change the timezone or class name above and both boxes update &mdash; but if you already installed a snippet with a different class/timezone, replace it.</li>
-      <li>After publishing, clear the site/page cache once.</li>
-    </ol>
-    <p style="font-size:12px;color:var(--text-dim);">Dates are encoded in the class as <code>&lt;class&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;class&gt;E&lt;&hellip;&gt;</code>; a date-only value counts the whole day (00:00:00&ndash;23:59:59).</p>
+    <summary style="font-size:14px;">Advanced &mdash; schedule an element you already have (class + one-time snippet)</summary>
+    <div style="margin-top:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+        <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);">CSS class &mdash; put on the element</strong>
+        <button class="copy-btn" id="copyClass">Copy</button>
+      </div>
+      <pre id="classOut">&mdash;</pre>
+      <p class="field-note">Add these to the element's <strong>class list</strong> &mdash; its <code>class="&hellip;"</code> attribute, or your page builder's CSS-class / extra-class field.</p>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 8px;">
+        <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);">One-time snippet &mdash; paste once on the page</strong>
+        <button class="copy-btn" id="copySnippet">Copy</button>
+      </div>
+      <pre id="snippetOut">&mdash;</pre>
+      <p class="field-note">Paste once anywhere on the page &mdash; a site-wide header/footer code area, or any HTML / embed / code block. It controls every element that carries the class. The ready-to-paste block already includes this, so you don't need both.</p>
+    </div>
   </details>
 </div>
+
+<details style="margin: -6px 0 18px; padding: 0 4px;">
+  <summary style="font-size:13px;">How the scheduling works</summary>
+  <ul>
+    <li>Everything is hidden by default and shown only while &ldquo;now&rdquo; (in the chosen timezone) is inside its window &mdash; so nothing flashes before its time. For a holiday notice, set the <strong>End</strong> to the holiday and leave <strong>Start</strong> blank to show it from now until then.</li>
+    <li>It runs in the browser, so caching can't keep an expired item visible. Clear the cache once after publishing so the new content goes out.</li>
+    <li>You can schedule several items independently &mdash; each with its own window; overlapping windows show at the same time.</li>
+    <li>Dates are encoded in the class as <code>&lt;class&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;class&gt;E&lt;&hellip;&gt;</code>; a date-only value counts the whole day (00:00:00&ndash;23:59:59).</li>
+  </ul>
+</details>
 
 <script>
 function $(id){ return document.getElementById(id); }
@@ -264,9 +318,41 @@ function refreshStatus(){
   }
 }
 
+// ---- Content editor (lightweight WYSIWYG + HTML source toggle) ----
+// Clean visual-editor markup down to semantic HTML: no inline styles/classes,
+// <b>→<strong>, <i>→<em>, drop empty blocks. (HTML-mode source is left as-is.)
+function cleanHtml(html){
+  var tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  tmp.querySelectorAll('b').forEach(function(n){ var s = document.createElement('strong'); s.innerHTML = n.innerHTML; n.replaceWith(s); });
+  tmp.querySelectorAll('i').forEach(function(n){ var s = document.createElement('em'); s.innerHTML = n.innerHTML; n.replaceWith(s); });
+  tmp.querySelectorAll('*').forEach(function(n){
+    ['style', 'class', 'align', 'face', 'color'].forEach(function(a){ n.removeAttribute(a); });
+    if ((n.tagName === 'SPAN' || n.tagName === 'FONT') && n.attributes.length === 0) {
+      n.replaceWith.apply(n, Array.prototype.slice.call(n.childNodes));
+    }
+  });
+  tmp.querySelectorAll('p, div, h2, h3, li').forEach(function(n){ if (!n.textContent.trim() && !n.querySelector('img, br')) n.remove(); });
+  return tmp.innerHTML.trim();
+}
+var editMode = 'visual';
+function contentHTML(){
+  return editMode === 'html' ? $('contentHtml').value.trim() : cleanHtml($('contentEditable').innerHTML);
+}
+
+// Self-contained block: the content wrapped in the scheduled class, plus the
+// scheduler — paste it once and it works on its own.
+function buildBlock(){
+  var content = contentHTML();
+  if (!content.trim()) return '';
+  return '<div class="' + scheduleClass() + '">\n' + content + '\n</div>\n' + buildSnippet();
+}
+
 function refresh(){
   $('classOut').textContent = scheduleClass();
   $('snippetOut').textContent = buildSnippet();
+  var b = buildBlock();
+  $('blockOut').textContent = b || '(Add content above to generate a ready-to-paste block — or use the Advanced section to schedule an element you already have.)';
   refreshStatus();
 }
 
@@ -275,7 +361,7 @@ function updateClock(){
   refreshStatus();
 }
 
-document.addEventListener('input', function(e){ if (e.target.matches('input, select')) refresh(); });
+document.addEventListener('input', function(e){ if (e.target.matches('input, select, textarea')) refresh(); });
 document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(true); refresh(); } });
 
 $('testBtn').addEventListener('click', function(){
@@ -294,8 +380,40 @@ function wireCopy(btnId, getText){
     setTimeout(function(){ btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
   });
 }
+wireCopy('copyBlock', buildBlock);
 wireCopy('copyClass', scheduleClass);
 wireCopy('copySnippet', buildSnippet);
+
+// Editor: prefer tags over inline styles, and <p> per line.
+try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
+try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
+(function(){
+  var editor = $('contentEditable'), htmlBox = $('contentHtml'), toggle = $('toggleMode');
+  $('wtoolbar').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b || !b.dataset.cmd) return;
+    e.preventDefault();
+    editor.focus();
+    var cmd = b.dataset.cmd;
+    if (cmd === 'createLink') { var url = prompt('Link URL:', 'https://'); if (!url) return; document.execCommand('createLink', false, url); }
+    else if (cmd === 'formatBlock') { document.execCommand('formatBlock', false, b.dataset.val); }
+    else { document.execCommand(cmd, false, null); }
+    refresh();
+  });
+  editor.addEventListener('input', refresh);
+  editor.addEventListener('blur', refresh);
+  toggle.addEventListener('click', function(){
+    if (editMode === 'visual') {
+      htmlBox.value = cleanHtml(editor.innerHTML);
+      editor.style.display = 'none'; htmlBox.style.display = 'block';
+      toggle.innerHTML = 'Visual'; editMode = 'html';
+    } else {
+      editor.innerHTML = htmlBox.value;
+      htmlBox.style.display = 'none'; editor.style.display = 'block';
+      toggle.innerHTML = '&lt;/&gt; HTML'; editMode = 'visual';
+    }
+    refresh();
+  });
+})();
 
 // Default to today's whole-day window in the chosen timezone.
 function setDefaults(force){
