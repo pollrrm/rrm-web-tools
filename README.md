@@ -356,7 +356,7 @@ The block ships hidden (`display:none`) with `data-start` / `data-end` attribute
 
 A general-purpose, site-agnostic version of the scheduling logic: it makes content **appear and disappear on a date-time window**, with no plugin. Two ways to use it:
 
-- **Paste content** (e.g. a holiday-hours notice) into the Content field → get a **ready-to-paste block**: your content wrapped in the scheduled class *plus* the scheduler, self-contained. Paste it once wherever it should appear and it shows/hides itself — nothing else to install. (For a holiday notice, set **End** to the holiday and leave **Start** blank to show it from now until then.)
+- **Add content** in the Content field — a small **visual editor** (headings, bold/italic, lists, links) with a **Visual ↔ HTML toggle**; visual output is cleaned to semantic HTML (no inline styles) so it adopts each site's theme, and the HTML mode lets you paste/tweak raw code. You get a **ready-to-paste block**: your content wrapped in the scheduled class *plus* the scheduler, self-contained. Paste it once wherever it should appear and it shows/hides itself — nothing else to install. (For a holiday notice, set **End** to the holiday and leave **Start** blank to show it from now until then.)
 - **Or schedule an element you already have** (Advanced section): grab just the **CSS class** (`<name> <name>S<YYYYMMDDHHMMSS> <name>E<…>`) to add to that element, plus the **one-time `<style>`+`<script>` snippet** to paste once on the page.
 
 ### Settings

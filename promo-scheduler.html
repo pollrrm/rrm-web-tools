@@ -73,6 +73,7 @@
   .wtoolbar button:hover { background: var(--secondary-hover); color: var(--text); }
   .wtoolbar .wtoggle { margin-left: auto; }
   .wsep { width: 1px; align-self: stretch; background: var(--border-strong); margin: 2px 3px; }
+  .wtoolbar.htmlmode button[data-cmd] { opacity: .35; pointer-events: none; }
   .weditor { min-height: 130px; max-height: 340px; overflow-y: auto; padding: 10px 12px; color: var(--text); font-size: 14px; line-height: 1.55; outline: none; }
   .weditor:empty:before { content: attr(data-placeholder); color: var(--text-dim); }
   .weditor h2 { font-size: 20px; margin: .5em 0 .3em; } .weditor h3 { font-size: 16px; margin: .5em 0 .3em; }
@@ -174,7 +175,7 @@
       <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
       <button type="button" data-cmd="createLink" title="Add link">Link</button>
       <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
-      <button type="button" data-cmd="removeFormat" title="Clear formatting">Clear</button>
+      <button type="button" data-cmd="clear" title="Clear formatting (back to normal text)">Clear</button>
       <button type="button" class="wtoggle" id="toggleMode" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
     </div>
     <div class="weditor" id="contentEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste content — e.g. a holiday-hours notice."></div>
@@ -388,15 +389,55 @@ wireCopy('copySnippet', buildSnippet);
 try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
 try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
 (function(){
-  var editor = $('contentEditable'), htmlBox = $('contentHtml'), toggle = $('toggleMode');
-  $('wtoolbar').addEventListener('click', function(e){
+  var editor = $('contentEditable'), htmlBox = $('contentHtml'), toggle = $('toggleMode'), toolbar = $('wtoolbar');
+  // Keep the editor's selection when a toolbar button is pressed — buttons would
+  // otherwise steal focus on mousedown and collapse the selection, so block
+  // commands (headings / clear) would have nothing to act on.
+  toolbar.addEventListener('mousedown', function(e){ if (e.target.closest('button')) e.preventDefault(); });
+
+  var BLOCKS = { P:1, H2:1, H3:1, H4:1, DIV:1, LI:1, BLOCKQUOTE:1 };
+  function currentBlock(){
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null;
+    var node = sel.getRangeAt(0).startContainer;
+    if (node.nodeType === 3) node = node.parentNode;
+    while (node && node !== editor && !BLOCKS[node.tagName]) node = node.parentNode;
+    return (node && node !== editor) ? node : null;
+  }
+  // Change the block containing the caret to <tag>. Without force, clicking the
+  // same heading again toggles back to a paragraph. Done by swapping the element
+  // directly — execCommand('formatBlock') nests tags when a whole line is
+  // selected and is unreliable for toggling headings off.
+  function setBlock(tag, force){
+    var el = currentBlock(), want = tag.toLowerCase();
+    if (!el) { document.execCommand('formatBlock', false, force ? want : tag); return; }
+    if (el.tagName === 'LI') return;
+    var cur = el.tagName.toLowerCase();
+    var target = force ? want : (cur === want ? 'p' : want);
+    if (cur === target) return;
+    var neo = document.createElement(target);
+    neo.innerHTML = el.innerHTML;
+    el.replaceWith(neo);
+    var r = document.createRange(); r.selectNodeContents(neo); r.collapse(false);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+
+  toolbar.addEventListener('click', function(e){
     var b = e.target.closest('button'); if (!b || !b.dataset.cmd) return;
-    e.preventDefault();
-    editor.focus();
+    if (editMode === 'html') return; // formatting applies to the visual editor only
     var cmd = b.dataset.cmd;
-    if (cmd === 'createLink') { var url = prompt('Link URL:', 'https://'); if (!url) return; document.execCommand('createLink', false, url); }
-    else if (cmd === 'formatBlock') { document.execCommand('formatBlock', false, b.dataset.val); }
-    else { document.execCommand(cmd, false, null); }
+    if (cmd === 'createLink') {
+      var url = prompt('Link URL:', 'https://'); if (!url) return;
+      document.execCommand('createLink', false, url);
+    } else if (cmd === 'formatBlock') {
+      setBlock(b.dataset.val, false);
+    } else if (cmd === 'clear') {
+      document.execCommand('removeFormat');   // inline (bold/italic/color)
+      document.execCommand('unlink');         // links
+      setBlock('P', true);                    // block (heading → normal)
+    } else {
+      document.execCommand(cmd, false, null);
+    }
+    editor.focus();
     refresh();
   });
   editor.addEventListener('input', refresh);
@@ -405,10 +446,12 @@ try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e)
     if (editMode === 'visual') {
       htmlBox.value = cleanHtml(editor.innerHTML);
       editor.style.display = 'none'; htmlBox.style.display = 'block';
+      toolbar.classList.add('htmlmode');
       toggle.innerHTML = 'Visual'; editMode = 'html';
     } else {
       editor.innerHTML = htmlBox.value;
       htmlBox.style.display = 'none'; editor.style.display = 'block';
+      toolbar.classList.remove('htmlmode');
       toggle.innerHTML = '&lt;/&gt; HTML'; editMode = 'visual';
     }
     refresh();
