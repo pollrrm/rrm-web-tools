@@ -125,25 +125,36 @@
   <h2>Settings</h2>
   <div class="row">
     <div>
-      <label>Timezone <span class="hint">(how the window is judged)</span></label>
-      <select id="tz">
-        <option value="America/Los_Angeles">Pacific — Los Angeles</option>
-        <option value="America/Denver">Mountain — Denver</option>
-        <option value="America/Chicago">Central — Chicago</option>
-        <option value="America/New_York">Eastern — New York</option>
-        <option value="">Visitor's local time (each device)</option>
-        <option value="UTC">UTC</option>
-        <option value="Europe/London">London</option>
-        <option value="Asia/Manila">Manila</option>
-        <option value="Australia/Sydney">Sydney</option>
-      </select>
+      <label>Client's state <span class="hint">(sets the timezone)</span></label>
+      <select id="state"><option value="">— Select state —</option></select>
     </div>
     <div>
-      <label>CSS class name <span class="hint">(marker; keep it unique per site)</span></label>
-      <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
+      <label>Timezone <span class="hint">(auto-set from state; change if needed)</span></label>
+      <select id="tz">
+        <optgroup label="United States">
+          <option value="America/New_York">Eastern — New York</option>
+          <option value="America/Chicago">Central — Chicago</option>
+          <option value="America/Denver">Mountain — Denver</option>
+          <option value="America/Phoenix">Mountain — Arizona (no DST)</option>
+          <option value="America/Los_Angeles">Pacific — Los Angeles</option>
+          <option value="America/Anchorage">Alaska</option>
+          <option value="Pacific/Honolulu">Hawaii (no DST)</option>
+          <option value="America/Puerto_Rico">Atlantic — Puerto Rico (no DST)</option>
+        </optgroup>
+        <optgroup label="Other">
+          <option value="">Visitor's local time (each device)</option>
+          <option value="UTC">UTC</option>
+          <option value="Europe/London">London</option>
+          <option value="Asia/Manila">Manila</option>
+          <option value="Australia/Sydney">Sydney</option>
+        </optgroup>
+      </select>
     </div>
   </div>
-  <p class="field-note">Pick a timezone to pin the window to one clock everywhere (e.g. "ends midnight Pacific"), or <strong>Visitor's local time</strong> to run it in each viewer's own timezone.</p>
+  <p class="field-note" id="stateNote" style="color: var(--purple);"></p>
+  <label>CSS class name <span class="hint">(marker; keep it unique per site)</span></label>
+  <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
+  <p class="field-note">From the client's listed address, pick the <strong>state</strong> and the timezone is set for you (Arizona &amp; Hawaii skip daylight saving automatically). A few states span two zones — a note appears so you can adjust. Or choose <strong>Visitor's local time</strong> to run in each viewer's own timezone.</p>
 </div>
 
 <div class="card">
@@ -455,6 +466,80 @@ try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e)
       toggle.innerHTML = '&lt;/&gt; HTML'; editMode = 'visual';
     }
     refresh();
+  });
+})();
+
+// ---- US state → timezone (picked from the client's listed address) ----
+// [state, IANA timezone, note shown when the state spans more than one zone]
+var STATES = [
+  ['Alabama','America/Chicago',''],
+  ['Alaska','America/Anchorage','The Aleutian Islands (west of 169°30′W) use Hawaii-Aleutian time.'],
+  ['Arizona','America/Phoenix','Arizona does not observe daylight saving — except the Navajo Nation, which does (use Mountain — Denver for it).'],
+  ['Arkansas','America/Chicago',''],
+  ['California','America/Los_Angeles',''],
+  ['Colorado','America/Denver',''],
+  ['Connecticut','America/New_York',''],
+  ['Delaware','America/New_York',''],
+  ['District of Columbia','America/New_York',''],
+  ['Florida','America/New_York','The western Panhandle (Pensacola area) is Central.'],
+  ['Georgia','America/New_York',''],
+  ['Hawaii','Pacific/Honolulu','Hawaii does not observe daylight saving.'],
+  ['Idaho','America/Denver','Northern Idaho (Coeur d’Alene, Moscow) is Pacific.'],
+  ['Illinois','America/Chicago',''],
+  ['Indiana','America/New_York','The northwest (Gary) and southwest (Evansville) corners are Central.'],
+  ['Iowa','America/Chicago',''],
+  ['Kansas','America/Chicago','Four far-western counties are Mountain.'],
+  ['Kentucky','America/New_York','Western Kentucky (Bowling Green, Paducah) is Central.'],
+  ['Louisiana','America/Chicago',''],
+  ['Maine','America/New_York',''],
+  ['Maryland','America/New_York',''],
+  ['Massachusetts','America/New_York',''],
+  ['Michigan','America/New_York','Four western Upper Peninsula counties are Central.'],
+  ['Minnesota','America/Chicago',''],
+  ['Mississippi','America/Chicago',''],
+  ['Missouri','America/Chicago',''],
+  ['Montana','America/Denver',''],
+  ['Nebraska','America/Chicago','Western Nebraska (Scottsbluff, North Platte) is Mountain.'],
+  ['Nevada','America/Los_Angeles','West Wendover, on the Utah border, is Mountain.'],
+  ['New Hampshire','America/New_York',''],
+  ['New Jersey','America/New_York',''],
+  ['New Mexico','America/Denver',''],
+  ['New York','America/New_York',''],
+  ['North Carolina','America/New_York',''],
+  ['North Dakota','America/Chicago','The southwestern corner (Dickinson, Bowman) is Mountain.'],
+  ['Ohio','America/New_York',''],
+  ['Oklahoma','America/Chicago',''],
+  ['Oregon','America/Los_Angeles','Most of Malheur County (Ontario) is Mountain.'],
+  ['Pennsylvania','America/New_York',''],
+  ['Puerto Rico','America/Puerto_Rico','Puerto Rico does not observe daylight saving.'],
+  ['Rhode Island','America/New_York',''],
+  ['South Carolina','America/New_York',''],
+  ['South Dakota','America/Chicago','Western South Dakota (Rapid City) is Mountain.'],
+  ['Tennessee','America/Chicago','Eastern Tennessee (Knoxville, Chattanooga) is Eastern.'],
+  ['Texas','America/Chicago','El Paso and Hudspeth County are Mountain.'],
+  ['Utah','America/Denver',''],
+  ['Vermont','America/New_York',''],
+  ['Virginia','America/New_York',''],
+  ['Washington','America/Los_Angeles',''],
+  ['West Virginia','America/New_York',''],
+  ['Wisconsin','America/Chicago',''],
+  ['Wyoming','America/Denver','']
+];
+(function(){
+  var sel = $('state'), note = $('stateNote'), tzSel = $('tz');
+  STATES.forEach(function(s){
+    var o = document.createElement('option');
+    o.value = s[1]; o.textContent = s[0]; o.dataset.note = s[2] || '';
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', function(){
+    var opt = sel.options[sel.selectedIndex];
+    if (sel.value) tzSel.value = sel.value;
+    note.textContent = (opt && opt.dataset.note) ? '⚠ ' + opt.dataset.note : '';
+  });
+  // Hand-picking a timezone that no longer matches the chosen state clears it.
+  tzSel.addEventListener('change', function(){
+    if (sel.value && sel.value !== tzSel.value) { sel.value = ''; note.textContent = ''; }
   });
 })();
 

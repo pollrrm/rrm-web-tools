@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Email Assistant — DOM self-test</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background:#0f1115; color:#e6e6e6;
+         max-width: 900px; margin: 0 auto; padding: 30px 20px 60px; line-height: 1.5; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.sub { color:#8a93a3; font-size:13px; margin:0 0 20px; }
+  .case { border:1px solid #262a33; border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:13px;
+          background:#181b22; display:flex; gap:10px; align-items:baseline; }
+  .case .r { font-weight:700; min-width:52px; }
+  .pass .r { color:#6cd17b; } .fail .r { color:#e87b7b; }
+  .case .d { color:#b8bdc8; }
+  .case .got { color:#8a93a3; font-size:12px; display:block; margin-top:3px; white-space:pre-wrap; }
+  #summary { font-size:15px; font-weight:600; margin:18px 0; }
+  #stage { position:absolute; left:-10000px; top:0; width:800px; }
+</style>
+</head>
+<body>
+
+<h1>Email Assistant — DOM self-test</h1>
+<p class="sub">Pulls the live bookmarklet source out of <code>../email-assistant.html</code> and runs it against
+synthetic Gmail and Outlook compose markup. Run this after touching the bookmarklet's selectors or insert logic.
+Serve the repo over http and open this page — it runs on load.</p>
+
+<div id="summary">Running…</div>
+<div id="results"></div>
+
+<!-- Offscreen stage the fake mail clients are built into -->
+<div id="stage"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var results = [], pass = 0, fail = 0;
+
+  function check(desc, cond, got) {
+    results.push({ desc: desc, ok: !!cond, got: got });
+    if (cond) pass++; else fail++;
+  }
+
+  function render() {
+    var el = document.getElementById('results');
+    el.innerHTML = '';
+    results.forEach(function (r) {
+      var d = document.createElement('div');
+      d.className = 'case ' + (r.ok ? 'pass' : 'fail');
+      d.innerHTML = '<span class="r">' + (r.ok ? 'PASS' : 'FAIL') + '</span>' +
+                    '<span class="d"></span>';
+      d.querySelector('.d').textContent = r.desc;
+      if (!r.ok && r.got !== undefined) {
+        var g = document.createElement('span');
+        g.className = 'got';
+        g.textContent = 'got: ' + JSON.stringify(r.got);
+        d.querySelector('.d').appendChild(g);
+      }
+      el.appendChild(d);
+    });
+    var s = document.getElementById('summary');
+    s.textContent = fail === 0 ? ('All ' + pass + ' checks passed.') : (fail + ' failed, ' + pass + ' passed.');
+    s.style.color = fail === 0 ? '#6cd17b' : '#e87b7b';
+  }
+
+  /* ---- synthetic mail clients ---------------------------------------- */
+
+  var GMAIL = '' +
+    '<h2 class="hP">Homepage banner update</h2>' +
+    '<div class="a3s">Hi Poll,\n\nOlder message in the thread, written long enough to clear the deliberate-selection threshold.</div>' +
+    '<div class="a3s">Hi Poll,\n\nCan you swap the homepage banner to the July artwork? Thanks!\n\nDana</div>' +
+    '<div class="Am Al editable" aria-label="Message Body" contenteditable="true" ' +
+         'style="width:600px;height:220px">' +
+      '<div>sure thing will do it today</div>' +
+      '<div class="gmail_quote">On Tue, Dana wrote: &gt; Can you swap the homepage banner…</div>' +
+    '</div>';
+
+  var OUTLOOK = '' +
+    '<div role="heading" aria-level="2">Homepage banner update</div>' +
+    '<div role="document">Can you swap the homepage banner to the July artwork?</div>' +
+    '<div aria-label="Message body" role="textbox" contenteditable="true" ' +
+         'style="width:600px;height:220px">' +
+      '<div>sure thing will do it today</div>' +
+      '<div id="divRplyFwdMsg">From: Dana</div>' +
+    '</div>';
+
+  function mount(html) {
+    var stage = document.getElementById('stage');
+    stage.innerHTML = html;
+    return stage;
+  }
+
+  /* ---- load + patch the real bookmarklet source ----------------------- */
+
+  function extractSource(pageText) {
+    var start = pageText.indexOf('function bookmarkletBody()');
+    if (start === -1) throw new Error('bookmarkletBody() not found in email-assistant.html');
+    // Walk braces from the function's opening "{" to find its true end.
+    var i = pageText.indexOf('{', start), depth = 0, end = -1;
+    for (var j = i; j < pageText.length; j++) {
+      var c = pageText[j];
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) { end = j + 1; break; } }
+    }
+    if (end === -1) throw new Error('could not find the end of bookmarkletBody()');
+    return pageText.slice(start, end);
+  }
+
+  var stubWin = { sent: [], postMessage: function (m) { this.sent.push(m); } };
+
+  /**
+   * Builds a runnable copy of the bookmarklet. Only the two things a test cannot
+   * supply are patched: the mail origin guard and location.host. The popup, its
+   * timers and its listeners are stubbed at runtime by runIsolated() instead, so
+   * the code under test stays as close to what ships as possible.
+   */
+  function makeRunner(src, hostName) {
+    var patched = src
+      .replace("'__TOOL_URL__'", JSON.stringify(location.origin + '/email-assistant.html'))
+      .replace('ORIGINS.indexOf(location.origin) === -1', 'false')
+      .replace(/location\.host/g, '__HOST__');
+    return new Function('__HOST__', patched + '; return bookmarkletBody;')(hostName);
+  }
+
+  /**
+   * Runs the bookmarklet, then the assertions in `steps`, with window.open and the
+   * ping/cleanup timers stubbed. Every message listener the run registered is torn
+   * down afterwards so a later run cannot be answered by an earlier one's closure.
+   */
+  function runIsolated(src, host, steps) {
+    var added = [];
+    var realAdd = window.addEventListener;
+    var realOpen = window.open;
+    var realInterval = window.setInterval;
+    var realTimeout = window.setTimeout;
+
+    window.addEventListener = function (t, f, o) {
+      if (t === 'message') added.push(f);
+      return realAdd.call(window, t, f, o);
+    };
+    window.open = function () { return stubWin; };
+    window.setInterval = function () { return 0; };
+    window.setTimeout = function () { return 0; };
+
+    stubWin.sent = [];
+    try {
+      makeRunner(src, host)();
+      steps();
+    } finally {
+      window.addEventListener = realAdd;
+      window.open = realOpen;
+      window.setInterval = realInterval;
+      window.setTimeout = realTimeout;
+      added.forEach(function (f) { window.removeEventListener('message', f); });
+    }
+  }
+
+  function contextPayload() {
+    return stubWin.sent.filter(function (m) { return m && m.type === 'context'; })[0];
+  }
+
+  function fireFromTool(data) {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: data,
+      origin: location.origin
+    }));
+  }
+
+  /* ---- the run --------------------------------------------------------- */
+
+  fetch('../email-assistant.html')
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' fetching ../email-assistant.html');
+      return r.text();
+    })
+    .then(function (text) {
+      var src = extractSource(text);
+      check('bookmarkletBody() source extracted', src.length > 500, src.length);
+
+      /* ---------------- Gmail ---------------- */
+      mount(GMAIL);
+      runIsolated(src, 'mail.google.com', function () {
+        fireFromTool({ __rrmEmail: 1, type: 'ready' });
+        var payload = contextPayload();
+
+        check('Gmail: context payload was sent to the tool tab', !!payload, stubWin.sent);
+        if (payload) {
+          check('Gmail: subject read from h2.hP',
+            payload.subject === 'Homepage banner update', payload.subject);
+          check('Gmail: thread pulled from .a3s message bodies',
+            /July artwork/.test(payload.thread), payload.thread);
+          check('Gmail: thread keeps more than just the newest message',
+            /Older message/.test(payload.thread), payload.thread);
+          check('Gmail: draft read from the compose box',
+            payload.draft === 'sure thing will do it today', payload.draft);
+          check('Gmail: quoted reply excluded from the draft',
+            payload.draft.indexOf('Dana wrote') === -1, payload.draft);
+        }
+
+        fireFromTool({ __rrmEmail: 1, type: 'insert', text: 'Hi Dana,\n\nSwapped — the July artwork is live.\n\nPoll' });
+        var box = document.querySelector('div.Am.Al.editable');
+        check('Gmail: generated text landed in the compose box',
+          /July artwork is live/.test(box.innerText), box.innerText);
+        check('Gmail: old draft text was replaced, not appended',
+          box.innerText.indexOf('sure thing') === -1, box.innerText);
+        check('Gmail: the quoted thread survived the insert',
+          !!box.querySelector('.gmail_quote'), box.innerHTML.slice(0, 200));
+        check('Gmail: blank line between paragraphs preserved',
+          /live\.\s*\n\s*\n\s*Poll/.test(box.innerText.replace(/\r/g, '')), box.innerText);
+      });
+
+      /* ---------------- Outlook ---------------- */
+      mount(OUTLOOK);
+      runIsolated(src, 'outlook.office.com', function () {
+        fireFromTool({ __rrmEmail: 1, type: 'ready' });
+        var p2 = contextPayload();
+
+        check('Outlook: context payload was sent', !!p2, stubWin.sent);
+        if (p2) {
+          check('Outlook: thread pulled from [role=document]',
+            /July artwork/.test(p2.thread), p2.thread);
+          check('Outlook: draft read from the compose box',
+            p2.draft === 'sure thing will do it today', p2.draft);
+          check('Outlook: forwarded-message block excluded from the draft',
+            p2.draft.indexOf('From: Dana') === -1, p2.draft);
+        }
+
+        fireFromTool({ __rrmEmail: 1, type: 'insert', text: 'Done — live now.' });
+        var box2 = document.querySelector('div[aria-label="Message body"]');
+        check('Outlook: generated text landed in the compose box',
+          /Done — live now/.test(box2.innerText), box2.innerText);
+        check('Outlook: the #divRplyFwdMsg block survived',
+          !!box2.querySelector('#divRplyFwdMsg'), box2.innerHTML.slice(0, 200));
+      });
+
+      /* ---------------- selection override ---------------- */
+      mount(GMAIL);
+      var range = document.createRange();
+      range.selectNodeContents(document.querySelectorAll('.a3s')[0]);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      runIsolated(src, 'mail.google.com', function () {
+        fireFromTool({ __rrmEmail: 1, type: 'ready' });
+        var p3 = contextPayload();
+        check('A page selection overrides the auto-grabbed thread',
+          p3 && /Older message/.test(p3.thread) && !/July artwork/.test(p3.thread),
+          p3 && p3.thread);
+      });
+      sel.removeAllRanges();
+
+      /* ---- a stray few-word selection must NOT hijack the context ---- */
+      mount(GMAIL);
+      var tiny = document.createRange();
+      var textNode = document.querySelectorAll('.a3s')[0].firstChild;
+      tiny.setStart(textNode, 0);
+      tiny.setEnd(textNode, 8);
+      sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(tiny);
+
+      runIsolated(src, 'mail.google.com', function () {
+        fireFromTool({ __rrmEmail: 1, type: 'ready' });
+        var p4 = contextPayload();
+        check('A stray short selection is ignored in favour of the real thread',
+          p4 && /July artwork/.test(p4.thread), p4 && p4.thread);
+      });
+      sel.removeAllRanges();
+
+      /* ---------------- no compose box ---------------- */
+      mount('<div class="a3s">Just reading, not replying.</div>');
+      var alerted = null, realAlert = window.alert;
+      window.alert = function (m) { alerted = m; };
+      runIsolated(src, 'mail.google.com', function () {
+        check('With no compose box open it warns instead of failing silently',
+          alerted && /Reply/i.test(alerted), alerted);
+        check('With no compose box open nothing is sent to the tool',
+          stubWin.sent.length === 0, stubWin.sent);
+      });
+      window.alert = realAlert;
+
+      document.getElementById('stage').innerHTML = '';
+      render();
+    })
+    .catch(function (e) {
+      check('harness ran', false, e.message);
+      render();
+    });
+})();
+</script>
+
+</body>
+</html>

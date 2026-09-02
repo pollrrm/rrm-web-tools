@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Fixer — Batch (ZIP)</title>
+<script>
+  // Apply saved theme before paint to avoid flash.
+  (function() {
+    try {
+      var s = localStorage.getItem('rrm-tools-theme');
+      var t = s || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  })();
+</script>
+<style>
+  /* ---- Shared theme tokens (dark / light) ---- */
+  :root, :root[data-theme="dark"] {
+    --bg: #0f1115; --panel: #181b22; --panel-2: #1c1f27;
+    --border: #262a33; --border-strong: #2a2f3a;
+    --text: #e6e6e6; --text-muted: #b8bdc8; --text-dim: #8a93a3;
+    --accent: #5b8def; --accent-hover: #4a7ce0;
+    --ok: #6cd17b; --warn: #e0b34a; --err: #e06c6c; --purple: #c8a8ff;
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6;
+    --border: #e1e4ea; --border-strong: #cbd0d8;
+    --text: #1a1d24; --text-muted: #475569; --text-dim: #64748b;
+    --accent: #2563eb; --accent-hover: #1d4ed8;
+    --ok: #15803d; --warn: #b45309; --err: #b91c1c; --purple: #6d28d9;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 1000;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; transition: border-color .15s, color .15s, background .15s; box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle svg { width: 18px; height: 18px; }
+  .theme-toggle .icon-sun { display: none; }
+  .theme-toggle .icon-moon { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+  :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 920px; margin: 0 auto; padding: 40px 20px 60px;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+    transition: background .15s, color .15s;
+  }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  h1 .dot { color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 14px; margin: 0; }
+  .back { display:inline-block; margin-bottom:18px; color: var(--accent); text-decoration:none; font-size:13px; }
+  .back:hover { text-decoration: underline; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 14px; color: var(--purple); }
+
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+  @media (max-width: 640px) { .settings-grid { grid-template-columns: 1fr; } }
+  label.fld { display:block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600; margin-bottom: 6px; }
+  input[type="text"], input[type="number"], select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 9px 11px; font-size: 14px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .range-row { display:flex; align-items:center; gap:10px; }
+  .range-row output { font-size: 13px; color: var(--text-muted); min-width: 38px; text-align:right; }
+  .check-row { display:flex; align-items:center; gap:8px; margin-top: 10px; font-size: 13px; color: var(--text-muted); }
+  .check-row input { accent-color: var(--accent); }
+
+  #drop {
+    border: 2px dashed var(--border-strong); border-radius: 12px;
+    padding: 46px 20px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s; background: var(--panel-2);
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: rgba(91,141,239,.06); }
+  #drop .big { font-size: 17px; font-weight: 600; margin: 10px 0 4px; }
+  #drop .small { font-size: 13px; color: var(--text-dim); }
+  #drop svg { width: 40px; height: 40px; color: var(--accent); }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background .15s; display:inline-flex; align-items:center; gap:8px;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .btn.secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
+  .btn-row { display:flex; gap:10px; flex-wrap: wrap; margin-top: 4px; }
+
+  .status { font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
+
+  .summary { display:flex; gap:22px; flex-wrap:wrap; margin-bottom: 14px; }
+  .summary .stat { }
+  .summary .num { font-size: 22px; font-weight: 700; }
+  .summary .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .num.saved { color: var(--ok); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+  .path { color: var(--text-dim); font-size: 11px; }
+  .name { color: var(--text); }
+  .save-pct { color: var(--ok); font-weight: 600; }
+  .save-pct.neg { color: var(--warn); }
+  .tag { display:inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); margin-left: 6px; }
+  .tag.warn { color: var(--warn); border-color: var(--warn); }
+  .hidden { display: none; }
+  .progress-wrap { height: 6px; background: var(--panel-2); border-radius: 4px; overflow:hidden; margin-top:14px; }
+  .progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+</style>
+</head>
+<body>
+
+<a class="back" href="./index.html">← All tools</a>
+
+<header>
+  <h1>Image Fixer — Batch<span class="dot">.</span></h1>
+  <p class="subtitle">Drop a monthly <strong>ZIP</strong> (or a folder / loose images) → every image is optimized in place, renamed (spaces → dashes), and the archive is re-zipped with its folder structure intact. Runs entirely in your browser.</p>
+</header>
+
+<!-- Settings -->
+<div class="panel">
+  <h2>Processing Settings</h2>
+  <div class="settings-grid">
+    <div>
+      <label class="fld" for="targetWidth">Target Width (px)</label>
+      <input type="text" id="targetWidth" placeholder="Auto (no resize)" inputmode="numeric">
+      <div class="hint">Leave blank for Auto — keeps original dimensions, only optimizes file size.</div>
+      <div class="check-row"><input type="checkbox" id="allowUpscale"><label for="allowUpscale">Allow upscale (enlarge smaller images)</label></div>
+    </div>
+    <div>
+      <label class="fld" for="quality">Compression Quality (%)</label>
+      <div class="range-row">
+        <input type="range" id="quality" min="10" max="100" step="1" value="85">
+        <output id="qualityVal">85%</output>
+      </div>
+      <label class="fld" for="targetKB" style="margin-top:16px;">Target Size Limit (KB)</label>
+      <select id="targetKB">
+        <option value="">Auto (Quality only)</option>
+        <option value="100">≤ 100 KB</option>
+        <option value="150">≤ 150 KB</option>
+        <option value="200">≤ 200 KB</option>
+        <option value="300">≤ 300 KB</option>
+        <option value="500">≤ 500 KB</option>
+      </select>
+    </div>
+    <div>
+      <label class="fld" for="outFormat">Output Format</label>
+      <select id="outFormat">
+        <option value="original" selected>Keep original (JPG stays JPG)</option>
+        <option value="jpg">JPG (Standard)</option>
+        <option value="webp">WebP</option>
+        <option value="png">PNG (lossless)</option>
+      </select>
+      <div class="check-row"><input type="checkbox" id="doRename" checked><label for="doRename">Rename spaces → dashes</label></div>
+      <div class="hint" style="margin-top:14px;">Non-image files (e.g. the <code>.docx</code>) pass through untouched, keeping their folder position.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Drop zone -->
+<div class="panel">
+  <div id="drop">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <div class="big">Drop a ZIP, a folder, or images here</div>
+    <div class="small">or click to browse — a monthly blog ZIP works best</div>
+  </div>
+  <input type="file" id="fileInput" class="hidden" accept=".zip,image/*" multiple>
+  <input type="file" id="folderInput" class="hidden" webkitdirectory>
+  <div class="btn-row" style="margin-top:14px;">
+    <button class="btn secondary" id="pickZip" type="button">Choose a ZIP / images…</button>
+    <button class="btn secondary" id="pickFolder" type="button">Choose a folder…</button>
+  </div>
+  <div class="progress-wrap hidden" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- Results -->
+<div class="panel hidden" id="resultsPanel">
+  <h2>Results</h2>
+  <div class="summary" id="summary"></div>
+  <div class="btn-row">
+    <button class="btn" id="dlArchive">⬇ Download re-zipped archive</button>
+    <button class="btn secondary" id="dlImages">⬇ Download images-only ZIP</button>
+  </div>
+  <div class="status" id="dlStatus"></div>
+  <div style="overflow-x:auto; margin-top:16px;">
+    <table id="resultsTable">
+      <thead><tr><th>File</th><th class="num-cell">Original</th><th class="num-cell">Optimized</th><th class="num-cell">Saved</th></tr></thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const IMG_EXT = ['jpg','jpeg','png','webp','gif','bmp'];
+
+  // Output holders
+  let archiveBlob = null;   // structure-preserving zip
+  let imagesBlob = null;    // flat images-only zip
+  let sourceName = 'images';
+
+  // ---------- Settings ----------
+  $('quality').addEventListener('input', (e) => { $('qualityVal').textContent = e.target.value + '%'; });
+
+  function readSettings() {
+    const tw = parseInt($('targetWidth').value, 10);
+    const fmt = $('outFormat').value;
+    const tkb = parseInt($('targetKB').value, 10);
+    return {
+      targetWidth: Number.isFinite(tw) && tw > 0 ? tw : null,
+      allowUpscale: $('allowUpscale').checked,
+      quality: parseInt($('quality').value, 10) / 100,
+      targetKB: Number.isFinite(tkb) && tkb > 0 ? tkb : null,
+      outFormat: fmt,
+      doRename: $('doRename').checked,
+    };
+  }
+
+  // ---------- Helpers ----------
+  function extOf(name) {
+    const dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  }
+  function baseOf(name) {
+    const dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.slice(0, dot) : name;
+  }
+  function dirOf(path) {
+    const slash = path.lastIndexOf('/');
+    return slash >= 0 ? path.slice(0, slash + 1) : '';
+  }
+  function baseName(path) {
+    const slash = path.lastIndexOf('/');
+    return slash >= 0 ? path.slice(slash + 1) : path;
+  }
+  function isImage(name) { return IMG_EXT.includes(extOf(name)); }
+
+  function outExtFor(srcExt, fmt) {
+    if (fmt === 'jpg') return 'jpg';
+    if (fmt === 'webp') return 'webp';
+    if (fmt === 'png') return 'png';
+    // original: normalize jpeg->jpg, otherwise keep
+    return srcExt === 'jpeg' ? 'jpg' : srcExt;
+  }
+  function mimeFor(outExt) {
+    if (outExt === 'png') return 'image/png';
+    if (outExt === 'webp') return 'image/webp';
+    return 'image/jpeg';
+  }
+  function newFileName(origName, fmt, doRename) {
+    let base = baseOf(origName);
+    if (doRename) base = base.replace(/\s+/g, '-').replace(/-+/g, '-');
+    const outExt = outExtFor(extOf(origName), fmt);
+    return base + '.' + outExt;
+  }
+  function fmtBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  // ---------- Core: optimize one image blob ----------
+  async function optimizeImage(blob, opts) {
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(blob);
+    } catch (e) {
+      // Fallback via <img> for formats createImageBitmap can't decode
+      bitmap = await new Promise((res, rej) => {
+        const url = URL.createObjectURL(blob);
+        const im = new Image();
+        im.onload = () => { URL.revokeObjectURL(url); res(im); };
+        im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode failed')); };
+        im.src = url;
+      });
+    }
+    let w = bitmap.width, h = bitmap.height;
+    if (opts.targetWidth && (opts.allowUpscale || opts.targetWidth < w)) {
+      const scale = opts.targetWidth / w;
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    // PNG output: preserve transparency; JPG: paint white behind.
+    const outExt = outExtFor(extOf('x.' + (opts._srcExt || 'jpg')), opts.outFormat);
+    const mime = mimeFor(outExt);
+    if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    if (bitmap.close) bitmap.close();
+
+    const toBlob = (q) => new Promise(res => canvas.toBlob(res, mime, q));
+    let q = opts.quality;
+    let out = await toBlob(q);
+    // Iteratively hit a target size (lossy formats only)
+    if (opts.targetKB && mime !== 'image/png') {
+      let tries = 0;
+      while (out && out.size / 1024 > opts.targetKB && q > 0.12 && tries < 14) {
+        q = Math.max(0.12, q - 0.07);
+        out = await toBlob(q);
+        tries++;
+      }
+    }
+    return out;
+  }
+
+  // ---------- Ingest: build a flat list of {path, blob} ----------
+  async function fromZip(file) {
+    const zip = await JSZip.loadAsync(file);
+    const entries = [];
+    const names = Object.keys(zip.files);
+    for (const name of names) {
+      const entry = zip.files[name];
+      if (entry.dir) continue;
+      if (baseName(name).startsWith('.')) continue;        // skip dotfiles
+      if (name.includes('__MACOSX/')) continue;            // skip mac cruft
+      const blob = await entry.async('blob');
+      entries.push({ path: name, blob });
+    }
+    return entries;
+  }
+
+  function readEntry(entry, base, out) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file((file) => { out.push({ path: base + file.name, blob: file }); resolve(); },
+                   () => resolve());
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const all = [];
+        const readBatch = () => reader.readEntries((batch) => {
+          if (!batch.length) {
+            Promise.all(all.map(e => readEntry(e, base + entry.name + '/', out))).then(resolve);
+          } else { all.push(...batch); readBatch(); }
+        }, () => resolve());
+        readBatch();
+      } else resolve();
+    });
+  }
+
+  async function fromDataTransfer(dt) {
+    const items = Array.from(dt.items || []).filter(i => i.kind === 'file');
+    const roots = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (roots.length) {
+      const out = [];
+      try { await Promise.all(roots.map(r => readEntry(r, '', out))); } catch (e) { /* fall through */ }
+      // The entry API can yield nothing on file:// (blocked) — only trust it if it read something.
+      if (out.length) {
+        if (out.length === 1 && extOf(out[0].path) === 'zip') return fromZip(out[0].blob);
+        return out;
+      }
+    }
+    // Fallback: plain files (reliable for dropped .zip / images, even on file://)
+    const files = Array.from(dt.files || []);
+    if (files.length === 1 && extOf(files[0].name) === 'zip') return fromZip(files[0]);
+    return files.map(f => ({ path: f.name, blob: f }));
+  }
+
+  // ---------- Process everything ----------
+  async function run(entries, srcLabel) {
+    if (!entries.length) {
+      setStatus('Nothing found to process. If you dropped a folder that lives in OneDrive/SharePoint, right-click it → "Always keep on this device" so the files are on disk, then use "Choose a folder…". Or drop the .zip directly.', 'warn');
+      return;
+    }
+    sourceName = (srcLabel || 'images').replace(/\.zip$/i, '');
+    const opts = readSettings();
+
+    const images = entries.filter(e => isImage(e.path));
+    const others = entries.filter(e => !isImage(e.path));
+
+    if (!images.length) {
+      setStatus(`Found ${entries.length} file${entries.length !== 1 ? 's' : ''}, but no images (looked for ${IMG_EXT.join(', ')}). Nothing to optimize.`, 'warn');
+      return;
+    }
+
+    $('progressWrap').classList.remove('hidden');
+    $('progressBar').style.width = '0%';
+    setStatus(`Optimizing ${images.length} image${images.length !== 1 ? 's' : ''}…`);
+
+    const archive = new JSZip();
+    const flat = new JSZip();
+    const usedFlat = new Set();
+    const rows = [];
+    let totalOrig = 0, totalNew = 0, done = 0, failed = 0;
+
+    // Pass-through non-images into the archive, unchanged.
+    for (const e of others) archive.file(e.path, e.blob);
+
+    for (const e of images) {
+      const origSize = e.blob.size;
+      const outName = newFileName(baseName(e.path), opts.outFormat, opts.doRename);
+      const outPath = dirOf(e.path) + outName;
+      let optBlob, note = '';
+      try {
+        optBlob = await optimizeImage(e.blob, { ...opts, _srcExt: extOf(e.path) });
+        if (!optBlob) throw new Error('encode failed');
+      } catch (err) {
+        // On failure, keep the original file so nothing is lost.
+        optBlob = e.blob;
+        note = 'kept original (could not process)';
+        failed++;
+      }
+      // If "optimized" ended up larger (already-tiny images), keep the smaller original.
+      let finalBlob = optBlob, finalName = outName, finalPath = outPath;
+      if (!note && optBlob.size >= origSize) {
+        finalBlob = e.blob;
+        // still apply rename, but keep original extension
+        finalName = newFileName(baseName(e.path), 'original', opts.doRename);
+        finalPath = dirOf(e.path) + finalName;
+        note = 'original smaller — kept';
+      }
+
+      archive.file(finalPath, finalBlob);
+
+      // Flat images-only zip (dedupe collisions across folders)
+      let flatName = finalName;
+      if (usedFlat.has(flatName.toLowerCase())) {
+        const folder = dirOf(e.path).replace(/\/$/, '').split('/').pop() || 'img';
+        flatName = folder.replace(/\s+/g, '-') + '__' + finalName;
+      }
+      usedFlat.add(flatName.toLowerCase());
+      flat.file(flatName, finalBlob);
+
+      totalOrig += origSize;
+      totalNew += finalBlob.size;
+      rows.push({ path: e.path, name: finalName, orig: origSize, size: finalBlob.size, note });
+
+      done++;
+      $('progressBar').style.width = Math.round((done / images.length) * 100) + '%';
+      if (done % 3 === 0) await new Promise(r => setTimeout(r, 0)); // yield to UI
+    }
+
+    setStatus('Packaging…');
+    archiveBlob = await archive.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    imagesBlob = images.length ? await flat.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }) : null;
+
+    renderResults(rows, totalOrig, totalNew, others.length, failed);
+    $('progressWrap').classList.add('hidden');
+    const savedPct = totalOrig ? Math.round((1 - totalNew / totalOrig) * 100) : 0;
+    setStatus(`Done — ${images.length} image${images.length !== 1 ? 's' : ''} optimized, ${fmtBytes(totalOrig - totalNew)} saved (${savedPct}%).` + (failed ? ` ${failed} could not be processed (originals kept).` : ''), failed ? 'warn' : 'ok');
+  }
+
+  // ---------- Render ----------
+  function renderResults(rows, totalOrig, totalNew, passthrough, failed) {
+    const savedPct = totalOrig ? Math.round((1 - totalNew / totalOrig) * 100) : 0;
+    $('summary').innerHTML = `
+      <div class="stat"><div class="num">${rows.length}</div><div class="lbl">Images</div></div>
+      <div class="stat"><div class="num">${fmtBytes(totalOrig)}</div><div class="lbl">Original total</div></div>
+      <div class="stat"><div class="num">${fmtBytes(totalNew)}</div><div class="lbl">Optimized total</div></div>
+      <div class="stat"><div class="num saved">${fmtBytes(totalOrig - totalNew)}</div><div class="lbl">Saved (${savedPct}%)</div></div>
+      ${passthrough ? `<div class="stat"><div class="num">${passthrough}</div><div class="lbl">Passed through</div></div>` : ''}
+    `;
+    const body = $('resultsBody');
+    body.innerHTML = '';
+    for (const r of rows) {
+      const pct = r.orig ? Math.round((1 - r.size / r.orig) * 100) : 0;
+      const neg = pct < 0;
+      const dir = dirOf(r.path);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${dir ? `<span class="path">${escapeHtml(dir)}</span>` : ''}<span class="name">${escapeHtml(r.name)}</span>${r.note ? `<span class="tag warn">${escapeHtml(r.note)}</span>` : ''}</td>
+        <td class="num-cell">${fmtBytes(r.orig)}</td>
+        <td class="num-cell">${fmtBytes(r.size)}</td>
+        <td class="num-cell"><span class="save-pct ${neg ? 'neg' : ''}">${neg ? '' : '−'}${Math.abs(pct)}%</span></td>`;
+      body.appendChild(tr);
+    }
+    $('resultsPanel').classList.remove('hidden');
+    $('dlImages').classList.toggle('hidden', !imagesBlob);
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  // ---------- Downloads ----------
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+  $('dlArchive').addEventListener('click', () => {
+    if (!archiveBlob) return;
+    download(archiveBlob, `${sourceName}-optimized.zip`);
+    setDlStatus('Re-zipped archive downloaded — feed this to the Blog Batch Helper.', 'ok');
+  });
+  $('dlImages').addEventListener('click', () => {
+    if (!imagesBlob) return;
+    download(imagesBlob, `${sourceName}-images.zip`);
+    setDlStatus('Images-only ZIP downloaded — bulk-upload these to the WP Media Library.', 'ok');
+  });
+
+  // ---------- Status ----------
+  function setStatus(msg, cls) { const el = $('status'); el.textContent = msg; el.className = 'status' + (cls ? ' ' + cls : ''); }
+  function setDlStatus(msg, cls) { const el = $('dlStatus'); el.textContent = msg; el.className = 'status' + (cls ? ' ' + cls : ''); }
+
+  // ---------- Wire up drop / browse ----------
+  const drop = $('drop');
+  drop.addEventListener('click', () => $('fileInput').click());
+  $('pickZip').addEventListener('click', (e) => { e.stopPropagation(); $('fileInput').click(); });
+  $('pickFolder').addEventListener('click', (e) => { e.stopPropagation(); $('folderInput').click(); });
+  $('folderInput').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    resetOutputs();
+    try {
+      const label = (files[0].webkitRelativePath || '').split('/')[0] || 'images';
+      await run(files.map(f => ({ path: f.webkitRelativePath || f.name, blob: f })), label);
+    } catch (err) { console.error(err); setStatus('Error: ' + err.message, 'err'); }
+    e.target.value = '';
+  });
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', async (e) => {
+    e.preventDefault(); drop.classList.remove('over');
+    resetOutputs();
+    try {
+      const entries = await fromDataTransfer(e.dataTransfer);
+      const label = pickLabel(e.dataTransfer);
+      await run(entries, label);
+    } catch (err) { console.error(err); setStatus('Error: ' + err.message, 'err'); }
+  });
+  $('fileInput').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    resetOutputs();
+    try {
+      if (files.length === 1 && extOf(files[0].name) === 'zip') {
+        await run(await fromZip(files[0]), files[0].name);
+      } else {
+        await run(files.map(f => ({ path: f.webkitRelativePath || f.name, blob: f })), files[0].name);
+      }
+    } catch (err) { console.error(err); setStatus('Error: ' + err.message, 'err'); }
+    e.target.value = '';
+  });
+
+  function pickLabel(dt) {
+    const items = Array.from(dt.items || []).filter(i => i.kind === 'file');
+    const first = items[0] && items[0].webkitGetAsEntry && items[0].webkitGetAsEntry();
+    if (first) return first.name;
+    return (dt.files[0] && dt.files[0].name) || 'images';
+  }
+  function resetOutputs() {
+    archiveBlob = imagesBlob = null;
+    $('resultsPanel').classList.add('hidden');
+    setDlStatus('');
+  }
+
+  // ---------- Theme toggle ----------
+  (function () {
+    function setTheme(t) { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem('rrm-tools-theme', t); } catch (e) {} }
+    const btn = document.createElement('button');
+    btn.className = 'theme-toggle'; btn.type = 'button';
+    btn.setAttribute('aria-label', 'Toggle light/dark theme'); btn.setAttribute('title', 'Toggle light/dark theme');
+    btn.innerHTML = '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+    btn.addEventListener('click', () => setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
+    document.body.appendChild(btn);
+  })();
+})();
+</script>
+</body>
+</html>

@@ -18,7 +18,9 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 | [DOCX / HTML Link Extractor](#4-docx--html-link-extractor) | List every hyperlink from a Word doc, an HTML file, or pasted content code, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
 | [Link Compare](#5-link-compare) | Compare all the links on two pages (source vs published) — live URL fetch or pasted HTML on either side — and flag missing, extra, and wrong-destination links | QA after publishing: confirm every intended link made it across and points to the right URL |
 
-All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
+| [Email Assistant](#8-email-assistant) | Draft, reply to, and polish email with Claude, with the thread and your draft pulled straight out of Gmail or Outlook Web by a bookmarklet | Coach replies and client email |
+
+All processing is **client-side** — with one exception. Every tool except the **Email Assistant** keeps files, pasted content, and downloads inside your browser. The Email Assistant sends the thread text and your draft to the Anthropic API using your own key; that is the point of it, and the tool says so in its own UI.
 
 ---
 
@@ -361,12 +363,13 @@ A general-purpose, site-agnostic version of the scheduling logic: it makes conte
 
 ### Settings
 
-- **Timezone** — pin the window to one clock everywhere (Pacific, Mountain, Central, Eastern, UTC, London, Manila, Sydney), or **Visitor's local time** to run it in each viewer's own timezone. Baked into the snippet.
+- **Client's state** — pick the state from the client's listed address and the timezone is set for you (all 50 states + DC + Puerto Rico). Handles the daylight-saving oddities: **Arizona** → `America/Phoenix` and **Hawaii** / **Puerto Rico** → no DST. States that span two zones (Florida, Indiana, Kentucky, Tennessee, Texas, Idaho, Oregon, Nevada, Kansas, Nebraska, the Dakotas, Michigan, Alaska) show a note naming the exception so you can switch the timezone manually.
+- **Timezone** — auto-set from the state, or choose directly: US zones (Eastern, Central, Mountain, Arizona, Pacific, Alaska, Hawaii, Puerto Rico), UTC, London, Manila, Sydney, or **Visitor's local time** to run it in each viewer's own timezone. Changing it by hand clears the state selection. Baked into the snippet.
 - **CSS class name** — the marker class (default `timedPromo`); keep it unique per site to avoid collisions. Sanitized to a safe class/regex name.
 
 ### Workflow
 
-1. Pick the timezone and (optionally) a class name.
+1. Pick the client's **state** (sets the timezone) and, optionally, a class name.
 2. Set **Start**/**End** as `MM/DD/YYYY hh:mm:ss` (24-hour; am/pm and seconds optional; date-only = whole day; blank start = show from the beginning; blank end = never ends). Fields default to today's whole-day window in the chosen timezone.
 3. Watch the live **Now in this timezone** clock and the **status** line (Showing now / Hidden — starts… / window ended…). The **Test: show now (1 hr)** button sets a window that's live immediately for a quick end-to-end check.
 4. Either paste your content into the **Content** field and **Copy the ready-to-paste block** (paste it wherever it should appear — self-contained), **or** use the **Advanced** section to copy the CSS class (for an element you already have) + the one-time snippet (paste once on the page).
@@ -445,6 +448,69 @@ If you need an offline build for any tool, all dependencies above can be inlined
 
 ---
 
+## 8. Email Assistant
+
+**File:** `email-assistant.html` · **Live:** https://pollrrm.github.io/rrm-web-tools/email-assistant.html
+
+Draft, reply to, and polish email with Claude. Modelled on what makes Gmail's "Help me write" and Polish
+feel good, which is not the model so much as the constraints around it: the thread goes in automatically,
+the presets are narrow and single-axis, and the output is the email body and nothing else — no preamble,
+no "Here's a polished version", no menu of options.
+
+### What it does
+
+- **Reply** — writes the reply the thread calls for, steered by a few bullets from you.
+- **Draft new** — writes an email from scratch out of your notes.
+- **Polish** — rewrites a draft you already have. **Show changes** renders a word-level diff against your
+  original so you can see exactly what it touched before accepting it.
+- Presets are one dimension at a time (Shorten, Formalize, Friendlier, Say no politely, Fix grammar only…).
+- **House style** rules, your name and your role are saved once and applied to every generation, so the
+  whole team's output can share a voice.
+- Output streams in as it is written, and can be stopped mid-generation.
+
+### Workflow (in Gmail / Outlook Web)
+
+1. Open the tool page once, paste your Anthropic API key, and set your name, role and house style.
+2. Drag the **✉ Email Assistant** button to your bookmarks bar.
+3. In Gmail or Outlook Web, open the message and click **Reply** so the compose box exists.
+4. Optional: select text on the page to use exactly that as the context instead of the auto-grab.
+5. Click the bookmarklet. The tool page opens with the subject, thread and your current draft filled in.
+6. Generate, then **Insert into email** — the text lands in the compose box, above the quoted thread.
+
+The tool page also works standalone: paste a thread into it and copy the result out.
+
+### How the two halves talk
+
+The bookmarklet does **not** call the API. It only reads the mail DOM and hands the text to the tool page
+over `postMessage`, and the tool page sends the finished text back the same way. Two reasons:
+
+- **CSP.** Gmail and Outlook Web restrict which origins their pages may call. A `fetch` to
+  `api.anthropic.com` from inside the mail tab is not something to rely on; from the tool's own GitHub
+  Pages origin it always works.
+- **Key safety.** The API key lives in `localStorage` on `pollrrm.github.io`, never on the mail origin, so
+  nothing running inside the mail tab can read it.
+
+Both sides pin the other's exact origin on every message, and the tool page only accepts a bridge
+handshake from a known mail host.
+
+### Notes / limitations
+
+- **Text leaves the browser.** The thread and your draft are sent to the Anthropic API. Use a dedicated key
+  with a spend limit, and keep anything under NDA out of it. This is the only tool in the repo that does this.
+- Uses your own API key and bills to your own Anthropic account. Runs on `claude-opus-5` at low effort,
+  which is the cheap/fast end for work this short.
+- Selectors for Gmail and Outlook Web will drift when either changes its DOM.
+  `test/email-assistant-fixture.html` runs the real bookmarklet against synthetic markup for both clients
+  and checks extraction, insertion, and that the quoted thread survives. Serve the repo over http and open
+  that page after touching the bookmarklet — it runs on load.
+- The bookmarklet source is kept as a readable function inside `email-assistant.html` and serialised at
+  page load. It is percent-encoded rather than minified, deliberately: collapsing newlines would let any
+  `//` comment inside it swallow the rest of the function. There is a build-time `new Function()` parse
+  check that surfaces a visible error if that ever breaks.
+- Requires a compose box to already be open; it will not click Reply for you.
+
+---
+
 ## Repository structure
 
 ```
@@ -457,6 +523,9 @@ rrm-web-tools/
 ├── pdf-to-jpg.html                  # PDF → JPG converter
 ├── docx-link-extractor.html         # DOCX / HTML Link Extractor
 ├── link-compare.html                # Link Compare
+├── email-assistant.html             # Email Assistant (tool page + bookmarklet source)
+├── test/
+│   └── email-assistant-fixture.html # DOM self-test for the Email Assistant bookmarklet
 └── README.md                        # This file
 ```
 
