@@ -18,10 +18,7 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 | [DOCX / HTML Link Extractor](#4-docx--html-link-extractor) | List every hyperlink from a Word doc, an HTML file, or pasted content code, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
 | [Link Compare](#5-link-compare) | Compare all the links on two pages (source vs published) — live URL fetch or pasted HTML on either side — and flag missing, extra, and wrong-destination links | QA after publishing: confirm every intended link made it across and points to the right URL |
 
-All processing in the tools above is **client-side**. Files, pasted content, and downloads never leave your browser.
-
-The one exception in this repo is the **Rewriter** browser extension (`rewriter-extension/`), which sends the
-text you ask it to rewrite to the Anthropic API using your own key. It is documented separately below.
+All processing is **client-side**. Files, pasted content, and downloads never leave your browser.
 
 ---
 
@@ -449,40 +446,6 @@ If you need an offline build for any tool, all dependencies above can be inlined
 
 ---
 
-## Rewriter (browser extension)
-
-**Folder:** `rewriter-extension/` — a Chrome side-panel extension, not a page on the tools site.
-Its own README has the detail; this is the summary.
-
-Select text anywhere — Outlook, WordPress, Elementor, Teams, a form field, a Google Doc — open the side
-panel, pick one action, and it either **rewrites that text** or **drafts a reply to it**. **Copy** always
-works; **Replace on page** writes a rewrite back over the original, and **Insert at cursor** drops a reply
-wherever you're typing.
-
-- **One action at a time**, never "make it better": Grammar only, Shorten, Expand, Formalize, Casual,
-  Clearer, Friendlier, Plain English, To bullets, To prose. Plus one optional free-text instruction.
-- **Reply mode drafts one for you the moment you pull a message in** — use it, steer it, or ignore it,
-  the way Gmail's suggested replies work. Replies never add a sign-off, since your compose window
-  already has one.
-- **Changes** toggles a word-level diff against the original, so you can see exactly what it touched
-  before you accept it — including whether it left every URL, name and number alone.
-- **The result is editable**, the button becomes *Rewrite again* for a fresh attempt, and **Use as input**
-  chains a second action onto the output. Only re-running costs an API call.
-- **House style** rules are saved once and applied to every rewrite, so the whole team's output shares
-  a voice.
-
-**You don't have to select anything.** *Read the page* takes your selection if you made one, otherwise the
-field you're typing in, otherwise the compose box and the message on screen. Select text only when you want
-a specific part rather than the obvious one.
-
-**It is deliberately not tied to any app.** The selection path knows nothing about any site; only the
-last-resort fallback looks for a compose box, and it degrades to "nothing found" rather than guessing.
-
-**This is the only thing in the repo that sends text off the machine** — to `api.anthropic.com`, with your
-own key, stored in your browser profile. Use a dedicated key with a spend limit and keep NDA material out.
-
----
-
 ## Repository structure
 
 ```
@@ -495,18 +458,6 @@ rrm-web-tools/
 ├── pdf-to-jpg.html                  # PDF → JPG converter
 ├── docx-link-extractor.html         # DOCX / HTML Link Extractor
 ├── link-compare.html                # Link Compare
-├── rewriter-extension/              # Rewriter (Chrome extension — not a page, see below)
-│   ├── manifest.json
-│   ├── background.js
-│   ├── panel.html / panel.css / panel.js
-│   ├── selection.js                 # The functions injected into the page
-│   ├── text-utils.js                # Signature trimming (runs in the panel)
-│   ├── make_icons.py
-│   ├── icons/
-│   └── test/
-│       ├── selection-fixture.html   # Self-test for capture / replace / insert
-│       ├── signature-fixture.html   # Self-test for signature trimming
-│       └── panel-preview.html       # Runs the panel in a normal tab, chrome.* stubbed
 └── README.md                        # This file
 ```
 
