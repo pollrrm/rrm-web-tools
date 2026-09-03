@@ -18,9 +18,10 @@ Browser-based utilities built by the Ring Ring Marketing Web Support team to spe
 | [DOCX / HTML Link Extractor](#4-docx--html-link-extractor) | List every hyperlink from a Word doc, an HTML file, or pasted content code, then cross-check & auto-update the links in your WordPress source against it | Auditing a coach-supplied doc's links and bringing a live WP post's links up to date |
 | [Link Compare](#5-link-compare) | Compare all the links on two pages (source vs published) — live URL fetch or pasted HTML on either side — and flag missing, extra, and wrong-destination links | QA after publishing: confirm every intended link made it across and points to the right URL |
 
-| [Email Assistant](#8-email-assistant) | Draft, reply to, and polish email with Claude, with the thread and your draft pulled straight out of Gmail or Outlook Web by a bookmarklet | Coach replies and client email |
+All processing in the tools above is **client-side**. Files, pasted content, and downloads never leave your browser.
 
-All processing is **client-side** — with one exception. Every tool except the **Email Assistant** keeps files, pasted content, and downloads inside your browser. The Email Assistant sends the thread text and your draft to the Anthropic API using your own key; that is the point of it, and the tool says so in its own UI.
+The one exception in this repo is the **Rewriter** browser extension (`rewriter-extension/`), which sends the
+text you ask it to rewrite to the Anthropic API using your own key. It is documented separately below.
 
 ---
 
@@ -448,66 +449,37 @@ If you need an offline build for any tool, all dependencies above can be inlined
 
 ---
 
-## 8. Email Assistant
+## Rewriter (browser extension)
 
-**File:** `email-assistant.html` · **Live:** https://pollrrm.github.io/rrm-web-tools/email-assistant.html
+**Folder:** `rewriter-extension/` — a Chrome side-panel extension, not a page on the tools site.
+Its own README has the detail; this is the summary.
 
-Draft, reply to, and polish email with Claude. Modelled on what makes Gmail's "Help me write" and Polish
-feel good, which is not the model so much as the constraints around it: the thread goes in automatically,
-the presets are narrow and single-axis, and the output is the email body and nothing else — no preamble,
-no "Here's a polished version", no menu of options.
+Select text anywhere — Outlook, WordPress, Elementor, Teams, a form field, a Google Doc — open the side
+panel, pick one action, and it either **rewrites that text** or **drafts a reply to it**. **Copy** always
+works; **Replace on page** writes a rewrite back over the original, and **Insert at cursor** drops a reply
+wherever you're typing.
 
-### What it does
+- **One action at a time**, never "make it better": Grammar only, Shorten, Expand, Formalize, Casual,
+  Clearer, Friendlier, Plain English, To bullets, To prose. Plus one optional free-text instruction.
+- **Reply mode drafts one for you the moment you pull a message in** — use it, steer it, or ignore it,
+  the way Gmail's suggested replies work. Replies never add a sign-off, since your compose window
+  already has one.
+- **Changes** toggles a word-level diff against the original, so you can see exactly what it touched
+  before you accept it — including whether it left every URL, name and number alone.
+- **The result is editable**, the button becomes *Rewrite again* for a fresh attempt, and **Use as input**
+  chains a second action onto the output. Only re-running costs an API call.
+- **House style** rules are saved once and applied to every rewrite, so the whole team's output shares
+  a voice.
 
-- **Reply** — writes the reply the thread calls for, steered by a few bullets from you.
-- **Draft new** — writes an email from scratch out of your notes.
-- **Polish** — rewrites a draft you already have. **Show changes** renders a word-level diff against your
-  original so you can see exactly what it touched before accepting it.
-- Presets are one dimension at a time (Shorten, Formalize, Friendlier, Say no politely, Fix grammar only…).
-- **House style** rules, your name and your role are saved once and applied to every generation, so the
-  whole team's output can share a voice.
-- Output streams in as it is written, and can be stopped mid-generation.
+**You don't have to select anything.** *Read the page* takes your selection if you made one, otherwise the
+field you're typing in, otherwise the compose box and the message on screen. Select text only when you want
+a specific part rather than the obvious one.
 
-### Workflow (in Gmail / Outlook Web)
+**It is deliberately not tied to any app.** The selection path knows nothing about any site; only the
+last-resort fallback looks for a compose box, and it degrades to "nothing found" rather than guessing.
 
-1. Open the tool page once, paste your Anthropic API key, and set your name, role and house style.
-2. Drag the **✉ Email Assistant** button to your bookmarks bar.
-3. In Gmail or Outlook Web, open the message and click **Reply** so the compose box exists.
-4. Optional: select text on the page to use exactly that as the context instead of the auto-grab.
-5. Click the bookmarklet. The tool page opens with the subject, thread and your current draft filled in.
-6. Generate, then **Insert into email** — the text lands in the compose box, above the quoted thread.
-
-The tool page also works standalone: paste a thread into it and copy the result out.
-
-### How the two halves talk
-
-The bookmarklet does **not** call the API. It only reads the mail DOM and hands the text to the tool page
-over `postMessage`, and the tool page sends the finished text back the same way. Two reasons:
-
-- **CSP.** Gmail and Outlook Web restrict which origins their pages may call. A `fetch` to
-  `api.anthropic.com` from inside the mail tab is not something to rely on; from the tool's own GitHub
-  Pages origin it always works.
-- **Key safety.** The API key lives in `localStorage` on `pollrrm.github.io`, never on the mail origin, so
-  nothing running inside the mail tab can read it.
-
-Both sides pin the other's exact origin on every message, and the tool page only accepts a bridge
-handshake from a known mail host.
-
-### Notes / limitations
-
-- **Text leaves the browser.** The thread and your draft are sent to the Anthropic API. Use a dedicated key
-  with a spend limit, and keep anything under NDA out of it. This is the only tool in the repo that does this.
-- Uses your own API key and bills to your own Anthropic account. Runs on `claude-opus-5` at low effort,
-  which is the cheap/fast end for work this short.
-- Selectors for Gmail and Outlook Web will drift when either changes its DOM.
-  `test/email-assistant-fixture.html` runs the real bookmarklet against synthetic markup for both clients
-  and checks extraction, insertion, and that the quoted thread survives. Serve the repo over http and open
-  that page after touching the bookmarklet — it runs on load.
-- The bookmarklet source is kept as a readable function inside `email-assistant.html` and serialised at
-  page load. It is percent-encoded rather than minified, deliberately: collapsing newlines would let any
-  `//` comment inside it swallow the rest of the function. There is a build-time `new Function()` parse
-  check that surfaces a visible error if that ever breaks.
-- Requires a compose box to already be open; it will not click Reply for you.
+**This is the only thing in the repo that sends text off the machine** — to `api.anthropic.com`, with your
+own key, stored in your browser profile. Use a dedicated key with a spend limit and keep NDA material out.
 
 ---
 
@@ -523,9 +495,18 @@ rrm-web-tools/
 ├── pdf-to-jpg.html                  # PDF → JPG converter
 ├── docx-link-extractor.html         # DOCX / HTML Link Extractor
 ├── link-compare.html                # Link Compare
-├── email-assistant.html             # Email Assistant (tool page + bookmarklet source)
-├── test/
-│   └── email-assistant-fixture.html # DOM self-test for the Email Assistant bookmarklet
+├── rewriter-extension/              # Rewriter (Chrome extension — not a page, see below)
+│   ├── manifest.json
+│   ├── background.js
+│   ├── panel.html / panel.css / panel.js
+│   ├── selection.js                 # The functions injected into the page
+│   ├── text-utils.js                # Signature trimming (runs in the panel)
+│   ├── make_icons.py
+│   ├── icons/
+│   └── test/
+│       ├── selection-fixture.html   # Self-test for capture / replace / insert
+│       ├── signature-fixture.html   # Self-test for signature trimming
+│       └── panel-preview.html       # Runs the panel in a normal tab, chrome.* stubbed
 └── README.md                        # This file
 ```
 

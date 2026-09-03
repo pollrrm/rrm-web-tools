@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rewriter — selection self-test</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background:#0f1117; color:#e6e8ee;
+         max-width: 900px; margin: 0 auto; padding: 30px 20px 60px; line-height: 1.5; }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  p.sub { color:#8b91a3; font-size:13px; margin:0 0 20px; }
+  .case { border:1px solid #262b38; border-radius:8px; padding:9px 13px; margin-bottom:7px; font-size:13px;
+          background:#171a23; display:flex; gap:10px; align-items:baseline; }
+  .case .r { font-weight:700; min-width:48px; }
+  .pass .r { color:#3ecf8e; } .fail .r { color:#ff6b6b; }
+  .case .d { color:#c3c8d4; }
+  .case .got { color:#8b91a3; font-size:12px; display:block; margin-top:3px; white-space:pre-wrap; }
+  #summary { font-size:15px; font-weight:600; margin:18px 0; }
+  #stage { position:absolute; left:-10000px; top:0; width:700px; }
+</style>
+</head>
+<body>
+
+<h1>Rewriter — selection self-test</h1>
+<p class="sub">Runs the extension's real <code>selection.js</code> against a textarea, an input, a
+contenteditable and read-only page text. Open this file over http and it runs on load.</p>
+
+<div id="summary">Running…</div>
+<div id="results"></div>
+<div id="stage"></div>
+
+<script src="../selection.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var results = [], pass = 0, fail = 0;
+
+  function check(desc, cond, got) {
+    results.push({ desc: desc, ok: !!cond, got: got });
+    if (cond) pass++; else fail++;
+  }
+
+  function render() {
+    var el = document.getElementById('results');
+    results.forEach(function (r) {
+      var d = document.createElement('div');
+      d.className = 'case ' + (r.ok ? 'pass' : 'fail');
+      var rr = document.createElement('span'); rr.className = 'r'; rr.textContent = r.ok ? 'PASS' : 'FAIL';
+      var dd = document.createElement('span'); dd.className = 'd'; dd.textContent = r.desc;
+      if (!r.ok && r.got !== undefined) {
+        var g = document.createElement('span'); g.className = 'got';
+        g.textContent = 'got: ' + JSON.stringify(r.got);
+        dd.appendChild(g);
+      }
+      d.appendChild(rr); d.appendChild(dd);
+      el.appendChild(d);
+    });
+    var s = document.getElementById('summary');
+    s.textContent = fail === 0 ? ('All ' + pass + ' checks passed.') : (fail + ' failed, ' + pass + ' passed.');
+    s.style.color = fail === 0 ? '#3ecf8e' : '#ff6b6b';
+  }
+
+  var stage = document.getElementById('stage');
+  function mount(html) { stage.innerHTML = html; window.__rrmRw = null; }
+  function clearSel() { var s = window.getSelection(); if (s) s.removeAllRanges(); }
+
+  /* ------------------------------------------------- textarea, partial */
+  mount('<textarea id="ta" rows="4" cols="60">Hello there. Please fix this bit. Goodbye.</textarea>');
+  var ta = document.getElementById('ta');
+  ta.focus();
+  ta.setSelectionRange(13, 33); // exactly "Please fix this bit."
+  var c1 = Selection_.captureSelection();
+  check('Textarea: captures the highlighted range', c1.ok && /Please fix this bit/.test(c1.text), c1);
+  check('Textarea: reported as editable', c1.editable === true && c1.kind === 'field', c1);
+
+  var inputEvents = 0;
+  ta.addEventListener('input', function () { inputEvents++; });
+  var r1 = Selection_.replaceSelection('Fixed that part.');
+  check('Textarea: replace reports success', r1.ok, r1);
+  check('Textarea: only the selected range changed',
+    ta.value === 'Hello there. Fixed that part. Goodbye.', ta.value);
+  check('Textarea: an input event fired so the host app notices', inputEvents === 1, inputEvents);
+
+  var c1b = Selection_.captureSelection();
+  check('Textarea: the replacement is left selected, so rewrites chain',
+    c1b.ok && c1b.text === 'Fixed that part.', c1b.text);
+
+  /* --------------------------------------------- textarea, nothing sel */
+  mount('<textarea id="tb" rows="3" cols="60">Whole field content here.</textarea>');
+  var tb = document.getElementById('tb');
+  tb.focus();
+  tb.setSelectionRange(3, 3);
+  var c2 = Selection_.captureSelection();
+  check('Textarea with nothing highlighted: falls back to the whole field',
+    c2.ok && c2.whole === true && c2.text === 'Whole field content here.', c2);
+  Selection_.replaceSelection('Replaced entirely.');
+  check('Textarea with nothing highlighted: the whole value is replaced',
+    tb.value === 'Replaced entirely.', tb.value);
+
+  /* ------------------------------------------------------------- input */
+  mount('<input id="ti" type="text" size="60" value="meta description goes here">');
+  var ti = document.getElementById('ti');
+  ti.focus();
+  ti.setSelectionRange(0, 16);
+  var c3 = Selection_.captureSelection();
+  check('Text input: captures the highlighted range', c3.ok && c3.text === 'meta description', c3);
+  Selection_.replaceSelection('Meta Description');
+  check('Text input: writes back in place',
+    ti.value === 'Meta Description goes here', ti.value);
+
+  /* --------------------------------------------------- contenteditable */
+  mount('<div id="ce" contenteditable="true" style="width:600px;min-height:60px">' +
+        'Keep this. Rewrite me please. Keep that.</div>');
+  var ce = document.getElementById('ce');
+  var tn = ce.firstChild;
+  var range = document.createRange();
+  range.setStart(tn, 11); range.setEnd(tn, 29); // exactly "Rewrite me please."
+  var sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  ce.focus();
+
+  var c4 = Selection_.captureSelection();
+  check('Contenteditable: captures the selected text',
+    c4.ok && /Rewrite me please/.test(c4.text), c4);
+  check('Contenteditable: reported as editable', c4.editable === true && c4.kind === 'editable', c4);
+
+  var r4 = Selection_.replaceSelection('Rewritten.');
+  check('Contenteditable: replace reports success', r4.ok, r4);
+  check('Contenteditable: surrounding text is untouched',
+    /^Keep this\. Rewritten\.\s*Keep that\.$/.test(ce.innerText.trim()), ce.innerText);
+
+  /* --------------------------------------------------------- read-only */
+  mount('<p id="ro">This paragraph is not editable at all, it is just page copy.</p>');
+  var p = document.getElementById('ro');
+  document.body.focus();
+  var r2 = document.createRange();
+  r2.selectNodeContents(p);
+  sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(r2);
+
+  var c5 = Selection_.captureSelection();
+  check('Read-only text: still captured so it can be rewritten and copied',
+    c5.ok && /not editable at all/.test(c5.text), c5);
+  check('Read-only text: flagged as not editable', c5.editable === false && c5.kind === 'readonly', c5);
+  var r5 = Selection_.replaceSelection('nope');
+  check('Read-only text: replace refuses instead of mangling the page',
+    !r5.ok && r5.reason === 'readonly', r5);
+  check('Read-only text: the paragraph is unchanged',
+    /not editable at all/.test(p.textContent), p.textContent);
+  clearSel();
+
+  /* ------------------------ no selection: read the page (mail shapes) */
+
+  // Gmail-ish: inline reply, original still rendered in the reading pane.
+  var GMAIL = '<div class="a3s">Hi Poll,\n\nCan you swap the homepage banner to the July artwork? Thanks!\n\nDana</div>' +
+    '<div class="Am Al editable" aria-label="Message Body" contenteditable="true" style="width:600px;height:200px">' +
+      '<div>sure thing will do it today</div>' +
+      '<div class="gmail_quote">On Tue, Dana wrote: &gt; Can you swap the homepage banner…</div>' +
+    '</div>';
+
+  // Outlook-ish: full-window reply, the thread exists ONLY as the quoted block.
+  var OUTLOOK = '<div aria-label="Message body" role="textbox" contenteditable="true" style="width:600px;height:240px">' +
+      '<div>Hi Hannah, this is done.</div>' +
+      '<div>- Popup installed on the homepage, once per day per user.</div>' +
+      '<div id="divRplyFwdMsg">From: Hannah Sorrell\n\nHi Poll, please add the event popup to the homepage.</div>' +
+    '</div>';
+
+  mount(GMAIL);
+  clearSel(); document.body.focus();
+  var pr = Selection_.captureSelection('reply');
+  check('No selection, Reply: reads the message from the reading pane',
+    pr.ok && pr.kind === 'page-reply' && /July artwork/.test(pr.text), pr);
+  check('No selection, Reply: also returns what you had already typed as the draft',
+    pr.draft === 'sure thing will do it today', pr.draft);
+  check('No selection, Reply: the quoted block is not mistaken for your draft',
+    pr.draft.indexOf('Dana wrote') === -1, pr.draft);
+
+  mount(GMAIL);
+  clearSel(); document.body.focus();
+  var pw = Selection_.captureSelection('rewrite');
+  check('No selection, Rewrite: reads what you typed, not the message you received',
+    pw.ok && pw.kind === 'page-compose' && pw.text === 'sure thing will do it today', pw);
+  check('No selection, Rewrite: reported as editable so Replace stays available',
+    pw.editable === true, pw);
+
+  var pwIns = Selection_.replaceSelection('Will do — swapping it this afternoon.');
+  var pwBox = document.querySelector('div.Am.Al.editable');
+  check('No selection, Rewrite: replace writes over your draft only',
+    pwIns.ok && /swapping it this afternoon/.test(pwBox.innerText), pwBox.innerText);
+  check('No selection, Rewrite: the quoted thread survives the replace',
+    !!pwBox.querySelector('.gmail_quote'), pwBox.innerHTML.slice(0, 120));
+
+  mount(OUTLOOK);
+  clearSel(); document.body.focus();
+  var po = Selection_.captureSelection('reply');
+  check('No selection, Reply: with no reading pane, falls back to the quoted block',
+    po.ok && /please add the event popup/.test(po.text), po);
+  check('No selection, Reply: the quoted block is excluded from your draft',
+    /this is done/.test(po.draft) && po.draft.indexOf('From: Hannah') === -1, po.draft);
+
+  mount('<p>Just some page copy, nothing to type into.</p>');
+  clearSel(); document.body.focus();
+  var pn = Selection_.captureSelection('rewrite');
+  check('No selection and no text box: reports empty rather than grabbing the whole page',
+    !pn.ok && pn.reason === 'empty', pn);
+
+  /* ------------------------------------- insertAtCursor (Reply mode) */
+  // Reply mode captures from the received message, then writes somewhere else entirely,
+  // so insertAtCursor must ignore whatever captureSelection stored.
+  mount('<p id="msg">Please add the event popup to the homepage.</p>' +
+        '<textarea id="reply" rows="4" cols="60">Hi Hannah, </textarea>');
+  var msg = document.getElementById('msg');
+  var msgRange = document.createRange();
+  msgRange.selectNodeContents(msg);
+  sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(msgRange);
+  var cap = Selection_.captureSelection();
+  check('Reply flow: the received message is captured as read-only',
+    cap.ok && cap.editable === false, cap);
+
+  var reply = document.getElementById('reply');
+  reply.focus();
+  reply.setSelectionRange(11, 11);
+  var ins = Selection_.insertAtCursor('The pop-up is live on the homepage.');
+  check('Reply flow: insert at cursor lands in the box you clicked into, not the source',
+    ins.ok && reply.value === 'Hi Hannah, The pop-up is live on the homepage.', reply.value);
+  check('Reply flow: the message replied to is untouched',
+    msg.textContent === 'Please add the event popup to the homepage.', msg.textContent);
+
+  // Insert mid-text: Chrome normalises a trailing space at the end of a contenteditable
+  // block, which would make an end-of-line assertion test the browser, not this code.
+  mount('<div id="ce2" contenteditable="true" style="width:600px;min-height:60px">Start: |end</div>');
+  var ce2 = document.getElementById('ce2');
+  var r3 = document.createRange();
+  r3.setStart(ce2.firstChild, 7); r3.setEnd(ce2.firstChild, 8);
+  sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(r3);
+  ce2.focus();
+  var ins2 = Selection_.insertAtCursor('done.');
+  check('Reply flow: insert at cursor works in a rich editor too',
+    ins2.ok && ce2.textContent === 'Start: done.end', ce2.textContent);
+
+  mount('<p id="ro2">Nowhere to type here.</p>');
+  var roRange = document.createRange();
+  roRange.selectNodeContents(document.getElementById('ro2'));
+  sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(roRange);
+  document.body.focus();
+  var ins3 = Selection_.insertAtCursor('nope');
+  check('Reply flow: with the cursor in read-only text, insert refuses',
+    !ins3.ok && ins3.reason === 'not-editable', ins3);
+  clearSel();
+
+  /* ------------------------------------------------------ nothing / gone */
+  mount('<p>Nothing selected here.</p>');
+  clearSel();
+  document.body.focus();
+  var c6 = Selection_.captureSelection();
+  check('With no selection at all, capture reports empty', !c6.ok && c6.reason === 'empty', c6);
+
+  mount('<textarea id="tc" rows="2" cols="40">Disappearing act.</textarea>');
+  var tc = document.getElementById('tc');
+  tc.focus(); tc.setSelectionRange(0, 12);
+  Selection_.captureSelection();
+  tc.parentNode.removeChild(tc);
+  var r6 = Selection_.replaceSelection('x');
+  check('If the field is gone from the DOM, replace says so instead of throwing',
+    !r6.ok && r6.reason === 'gone', r6);
+
+  window.__rrmRw = null;
+  var r7 = Selection_.replaceSelection('x');
+  check('With nothing captured, replace refuses', !r7.ok && r7.reason === 'no-capture', r7);
+
+  stage.innerHTML = '';
+  render();
+})();
+</script>
+
+</body>
+</html>
