@@ -672,7 +672,9 @@
 
       for (let i = bodyStart; i < blocks.length; i++) {
         const text = plainText(blocks[i]);
-        if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) {
+        // Body ends at the first tail-metadata marker — "Word Count" (older docs)
+        // or an "SEO Elements" trailer with no Word Count (newer docs).
+        if (bodyEnd === blocks.length && /^(word count|seo elements|seo title|meta description|target keywords|h tags used)\b/i.test(text)) {
           bodyEnd = i;
         }
         const seoMatch = text.match(/^SEO Title Tag:\s*(.+)$/i);

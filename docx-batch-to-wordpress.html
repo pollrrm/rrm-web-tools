@@ -668,7 +668,10 @@ function parseFromHtml(html, filename) {
 
   for (let i = bodyStart; i < blocks.length; i++) {
     const text = plainText(blocks[i]);
-    if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) bodyEnd = i;
+    // Body ends at the first tail-metadata marker — "Word Count" (older docs) or
+    // an "SEO Elements" trailer with no Word Count (newer docs). Match any known
+    // marker so the SEO/keywords/H-tags block never bleeds into the content.
+    if (bodyEnd === blocks.length && /^(word count|seo elements|seo title|meta description|target keywords|h tags used)\b/i.test(text)) bodyEnd = i;
     // Accept "SEO Title:" or "SEO Title Tag:" — content team uses both.
     const seoMatch = text.match(/^SEO\s+Title(?:\s+Tag)?:\s*(.+)$/i);
     if (seoMatch) seoTitle = seoMatch[1].trim();

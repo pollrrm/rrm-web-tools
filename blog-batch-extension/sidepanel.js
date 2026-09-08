@@ -235,7 +235,11 @@ function parseDocxHtml(html, filename) {
 
   for (let i = bodyStart; i < blocks.length; i++) {
     const text = plainText(blocks[i]);
-    if (/^Word Count\b/i.test(text) && bodyEnd === blocks.length) bodyEnd = i;
+    // Body ends at the first tail-metadata marker. Older docs use "Word Count";
+    // newer ones (e.g. Cemetery) have no Word Count and start the trailer with an
+    // "SEO Elements" heading, so match any of the known trailer markers and take
+    // the earliest — otherwise the SEO/keywords/H-tags block bleeds into content.
+    if (bodyEnd === blocks.length && /^(word count|seo elements|seo title|meta description|target keywords|h tags used)\b/i.test(text)) bodyEnd = i;
     const seoMatch = text.match(/^SEO\s+Title(?:\s+Tag)?:\s*(.+)$/i);
     if (seoMatch) seoTitle = seoMatch[1].trim();
     const metaMatch = text.match(/^Meta\s+Description:\s*(.+)$/i);
