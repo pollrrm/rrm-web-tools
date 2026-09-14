@@ -6,8 +6,8 @@
 const TARGET_URLS = {
   rrmathome: 'https://www.rrmathome.com/wp-admin/post-new.php',
   scmm:      'https://www.seniorcaremarketingmax.com/wp-admin/post-new.php',
-  rrm:       'https://www.ringringmarketing.com/wp-admin/post-new.php'
-  // Future sites: hospice
+  rrm:       'https://www.ringringmarketing.com/wp-admin/post-new.php',
+  hospice:   'https://www.hospicehavenmarketing.com/wp-admin/post-new.php'
 };
 
 // Announce extension presence so the page can light up its "Send to WP" buttons.

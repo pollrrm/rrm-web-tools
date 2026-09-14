@@ -564,9 +564,8 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
   const INDUSTRY_TARGETS = {
     'home improvement': { target: 'rrmathome', label: 'RRM@home', categories: ['Videos'] },
     'home care':        { target: 'scmm',      label: 'SCMM',     categories: ['Videos'] },
-    'funeral homes':    { target: 'rrm',       label: 'RRM',      categories: ['Funeral', 'Videos'] }
-    // Future:
-    // 'hospice':        { target: 'hospice', label: 'Hospice', categories: ['Videos'] }
+    'funeral homes':    { target: 'rrm',       label: 'RRM',      categories: ['Funeral', 'Videos'] },
+    'hospice':          { target: 'hospice',   label: 'Hospice',  categories: ['Videos'] }
   };
   function getTargetForIndustry(industry) {
     if (!industry) return null;
@@ -682,6 +681,19 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
   // Find the industry header by looking UPWARD from the Destination Link line
   // in the original text — i.e., the closest non-label line above the anchor.
   // Falls back to inferring from the destination URL slug.
+  // Map a free-form header line (or destination URL) onto a canonical industry
+  // label that matches an INDUSTRY_TARGETS key. Emails vary — some use the
+  // industry ("Home Care"), others the brand/site name ("Hospice Haven
+  // Marketing"). When nothing recognizable is found, keep the original text.
+  function canonicalIndustry(raw, destinationUrl) {
+    const s = ((raw || '') + ' ' + (destinationUrl || '')).toLowerCase();
+    if (/hospice/.test(s)) return 'Hospice';
+    if (/funeral/.test(s)) return 'Funeral Homes';
+    if (/home ?care|senior ?care|home ?health|scmm/.test(s)) return 'Home Care';
+    if (/home ?improvement|rrm ?@? ?home|rrmathome|hvac|window|flooring/.test(s)) return 'Home Improvement';
+    return raw;
+  }
+
   function detectIndustry(allLines, anchorIdx, destinationUrl) {
     for (let i = anchorIdx - 1; i >= 0; i--) {
       const ln = allLines[i].trim();
@@ -689,10 +701,10 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
       if (/^(content link|date of posting|video title|video link|content)\s*:/i.test(ln)) continue;
       // Explicit "Industry: X" tag wins.
       const industryM = ln.match(/^industry\s*:\s*(.+)$/i);
-      if (industryM) return industryM[1].trim();
+      if (industryM) return canonicalIndustry(industryM[1].trim(), destinationUrl);
       // Otherwise treat the line itself as the header (fallback for older email format).
       const cleaned = ln.replace(/[:\-–—]+\s*$/, '').replace(/^[#*\s]+/, '').trim();
-      if (cleaned.length > 0 && cleaned.length < 60) return cleaned;
+      if (cleaned.length > 0 && cleaned.length < 60) return canonicalIndustry(cleaned, destinationUrl);
     }
     if (destinationUrl) {
       const slugMap = [

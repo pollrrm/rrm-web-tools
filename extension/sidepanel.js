@@ -1,5 +1,6 @@
 // Side panel for the RRM WP Helper extension. Multi-niche: switch between
-// RRM@home (Home Improvement) and SCMM (Home Care) via the dropdown at the top.
+// RRM@home (Home Improvement), SCMM (Home Care), RRM (Funeral), and
+// Hospice Haven (Hospice) via the dropdown at the top.
 // Filters parsed cards to the selected niche and only fills the active tab when
 // it matches the niche's expected host + path.
 
@@ -19,6 +20,15 @@ const NICHES = {
     industry: 'home care',
     host: 'seniorcaremarketingmax.com',
     hostRe: /(^|\.)seniorcaremarketingmax\.com$/i,
+    pathRe: /\/wp-admin\/post(-new)?\.php/,
+    categories: ['Videos']
+  },
+  'hospice': {
+    label: 'Hospice Haven (Hospice)',
+    chip: 'Hospice',
+    industry: 'hospice',
+    host: 'hospicehavenmarketing.com',
+    hostRe: /(^|\.)hospicehavenmarketing\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
     categories: ['Videos']
   },
@@ -437,6 +447,19 @@ function stripHashtags(text) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// Map a free-form header line (or destination URL) onto a canonical industry
+// label that matches a niche's `industry`. Emails vary — some use the industry
+// ("Home Care"), others the brand/site name ("Hospice Haven Marketing"). When
+// nothing recognizable is found, keep the original header text.
+function canonicalIndustry(raw, destinationUrl) {
+  const s = ((raw || '') + ' ' + (destinationUrl || '')).toLowerCase();
+  if (/hospice/.test(s)) return 'Hospice';
+  if (/funeral/.test(s)) return 'Funeral Homes';
+  if (/home ?care|senior ?care|home ?health|scmm/.test(s)) return 'Home Care';
+  if (/home ?improvement|rrm ?@? ?home|rrmathome|hvac|window|flooring/.test(s)) return 'Home Improvement';
+  return raw;
+}
+
 function detectIndustry(allLines, anchorIdx, destinationUrl) {
   for (let i = anchorIdx - 1; i >= 0; i--) {
     // Headers arrive bold from a rich paste (**Funeral Homes**) — strip markers.
@@ -444,9 +467,9 @@ function detectIndustry(allLines, anchorIdx, destinationUrl) {
     if (!ln) continue;
     if (/^(content link|date of posting|video title|video link|content)\s*:/i.test(ln)) continue;
     const industryM = ln.match(/^industry\s*:\s*(.+)$/i);
-    if (industryM) return industryM[1].trim();
+    if (industryM) return canonicalIndustry(industryM[1].trim(), destinationUrl);
     const cleaned = ln.replace(/[:\-–—]+\s*$/, '').replace(/^[#*\s]+/, '').trim();
-    if (cleaned.length > 0 && cleaned.length < 60) return cleaned;
+    if (cleaned.length > 0 && cleaned.length < 60) return canonicalIndustry(cleaned, destinationUrl);
   }
   if (destinationUrl) {
     const slugMap = [

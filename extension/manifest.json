@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RRM WP Helper",
-  "version": "0.5.1",
-  "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor. Includes a side panel for filling the active New Post page directly. Supports rrmathome.com (Home Improvement), seniorcaremarketingmax.com (Home Care), and ringringmarketing.com (Funeral Homes).",
+  "version": "0.5.2",
+  "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor. Includes a side panel for filling the active New Post page directly. Supports rrmathome.com (Home Improvement), seniorcaremarketingmax.com (Home Care), ringringmarketing.com (Funeral Homes), and hospicehavenmarketing.com (Hospice).",
   "permissions": ["storage", "sidePanel", "tabs"],
   "host_permissions": [
     "https://pollrrm.github.io/*",
@@ -11,7 +11,9 @@
     "https://www.seniorcaremarketingmax.com/*",
     "https://seniorcaremarketingmax.com/*",
     "https://www.ringringmarketing.com/*",
-    "https://ringringmarketing.com/*"
+    "https://ringringmarketing.com/*",
+    "https://www.hospicehavenmarketing.com/*",
+    "https://hospicehavenmarketing.com/*"
   ],
   "action": {
     "default_title": "RRM WP Helper — open side panel"
@@ -44,7 +46,11 @@
         "https://www.ringringmarketing.com/wp-admin/post-new.php*",
         "https://ringringmarketing.com/wp-admin/post-new.php*",
         "https://www.ringringmarketing.com/wp-admin/post.php*",
-        "https://ringringmarketing.com/wp-admin/post.php*"
+        "https://ringringmarketing.com/wp-admin/post.php*",
+        "https://www.hospicehavenmarketing.com/wp-admin/post-new.php*",
+        "https://hospicehavenmarketing.com/wp-admin/post-new.php*",
+        "https://www.hospicehavenmarketing.com/wp-admin/post.php*",
+        "https://hospicehavenmarketing.com/wp-admin/post.php*"
       ],
       "js": ["content-wp.js"],
       "run_at": "document_idle"
