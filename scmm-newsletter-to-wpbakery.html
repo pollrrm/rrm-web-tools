@@ -205,6 +205,51 @@
 
   .out-textarea { min-height: 320px; }
 
+  /* ----- UTM tracking tags & link audit ----- */
+  .utm-row {
+    margin-bottom: 12px; padding: 12px;
+    background: rgba(91,141,239,0.06);
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .utm-paste { margin-bottom: 12px; }
+  .utm-paste label {
+    margin: 0 0 4px; font-size: 11px; color: var(--text-dim);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-paste input {
+    padding: 7px 9px; font-size: 12px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .utm-fields { grid-template-columns: 1fr 1fr; } }
+  .utm-fields label {
+    margin: 0 0 4px; font-size: 11px; color: var(--text-dim);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-fields input { padding: 6px 8px; font-size: 12px; }
+  .utm-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .utm-actions .hint { margin: 0; flex: 1 1 260px; font-size: 12px; color: var(--text-muted); opacity: .85; }
+
+  .link-audit { margin-bottom: 12px; }
+  .link-audit:empty { display: none; }
+  .audit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .audit-pill {
+    font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent;
+  }
+  .audit-pill.good { background: rgba(64,180,120,0.15); color: #6ddba0; border-color: rgba(64,180,120,0.35); }
+  .audit-pill.warn { background: rgba(230,170,60,0.15); color: #e8bf72; border-color: rgba(230,170,60,0.35); }
+  .audit-pill.bad  { background: rgba(226,90,90,0.15);  color: #f08b8b; border-color: rgba(226,90,90,0.35); }
+  .audit-count { font-size: 12px; color: var(--text-muted); }
+  .audit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .audit-list li {
+    font-size: 13px; line-height: 1.45; padding: 8px 10px;
+    border-radius: 5px; border-left: 3px solid transparent;
+    background: var(--panel-2, rgba(255,255,255,0.02));
+  }
+  .audit-list li.error { border-left-color: #e25a5a; }
+  .audit-list li.warn  { border-left-color: #e6aa3c; }
+
   details summary {
     cursor: pointer; color: var(--text-dim); font-size: 12px;
     margin-bottom: 8px; user-select: none;
@@ -330,6 +375,23 @@
       <input type="text" id="formId" value="10756" style="width: 90px; padding: 4px 8px;">
     </label>
   </div>
+  <div class="utm-row">
+    <div class="utm-paste">
+      <label for="utmPaste">Paste the full UTM string from the email (splits into the fields below)</label>
+      <input type="text" id="utmPaste" placeholder="?utm_source=scmm&utm_medium=website&utm_campaign=newsletter&utm_content=hcp_bulletin_september-2026">
+    </div>
+    <div class="utm-fields">
+      <div><label for="utmSource">utm_source</label><input type="text" id="utmSource" placeholder="e.g. newsletter"></div>
+      <div><label for="utmMedium">utm_medium</label><input type="text" id="utmMedium" placeholder="e.g. email"></div>
+      <div><label for="utmCampaign">utm_campaign</label><input type="text" id="utmCampaign" placeholder="e.g. home-care-post-bulletin"></div>
+      <div><label for="utmContent">utm_content</label><input type="text" id="utmContent" placeholder="e.g. september-2026"></div>
+    </div>
+    <div class="utm-actions">
+      <button class="tiny secondary" id="applyUtmBtn">Apply to all tracked links</button>
+      <span class="hint">Prefilled from the links themselves after you Generate. Any link that already carries a <code>utm_*</code> tag gets these values — leave a field blank to keep that parameter as-is.</span>
+    </div>
+  </div>
+  <div id="linkAudit" class="link-audit"></div>
   <textarea id="output" readonly class="out-textarea" placeholder="Click Generate to build the WPBakery code."></textarea>
   <div class="toolbar">
     <button id="generateBtn">Generate WPBakery code</button>
@@ -458,6 +520,14 @@
     return html;
   }
 
+  // WPBakery content should never carry presentational <span>/<font> wrappers.
+  // Drops the tags but keeps their text/children. Safety net for any that slip
+  // past the DOM-level unwrap (or were pasted/hand-edited into a body).
+  function stripSpansFonts(html) {
+    if (!html) return html;
+    return html.replace(/<\/?(?:span|font)\b[^>]*>/gi, '');
+  }
+
   // w:t content is already XML-escaped (&amp; &lt; &gt;) = HTML escaping, so it passes
   // through verbatim. Headings are decoded to match the HTML parser's textContent output.
   function decodeEntities(s) {
@@ -471,12 +541,12 @@
   function htmlNodesToWpText(rootEl) {
     const clone = rootEl.cloneNode(true);
     clone.querySelectorAll('[style]').forEach(el => el.removeAttribute('style'));
+    // Unwrap ALL span/font wrappers (not just attribute-less ones) — we never
+    // want them in WP output, and ones carrying a class/data-attr used to survive.
     ['span', 'font'].forEach(tag => {
       Array.from(clone.querySelectorAll(tag)).forEach(el => {
-        if (el.attributes.length === 0) {
-          while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
-          el.parentNode.removeChild(el);
-        }
+        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+        el.parentNode.removeChild(el);
       });
     });
     clone.querySelectorAll('h1 p, h2 p, h3 p, h4 p').forEach(p => {
@@ -487,7 +557,7 @@
 
     const out = [];
     function inlineHtml(el) {
-      const allowed = new Set(['a','em','strong','i','b','u','br','sup','sub','span']);
+      const allowed = new Set(['a','em','strong','i','b','u','br','sup','sub']);
       let html = '';
       el.childNodes.forEach(n => {
         if (n.nodeType === 3) {
@@ -577,7 +647,7 @@
       }
     }
     result = result.replace(/ /g, ' ');
-    return stripLinkBold(result.trim());
+    return stripSpansFonts(stripLinkBold(result.trim()));
   }
 
   function textOfHeading(h) {
@@ -703,7 +773,9 @@
 
   // ----- Word doc (.docx) parsing -----
   // Article headings are bold paragraphs at ~18pt (sz >= 28 half-points). Everything
-  // before the first heading (issue title + metadata) is skipped automatically.
+  // before the first heading (issue title + metadata) is skipped automatically, and
+  // metadata sections that are themselves 18pt headings (Meta Description, Email
+  // Subject Line, Preview Text, etc.) are dropped later via isMetaHeading().
   function buildDocxRels(relsXml) {
     const rels = {};
     (relsXml.match(/<Relationship\b[^>]*\/?>/g) || []).forEach(r => {
@@ -855,7 +927,11 @@
       }
     }
     if (cur) arts.push(cur);
-    return arts.map(a => ({ heading: a.heading, body: serializeDocxBlocks(a.blocks) }));
+    // Drop editorial-metadata sections (Meta Description, LinkedIn/Email Subject,
+    // Preview Text, etc.) — they're headings in the doc but not newsletter content.
+    return arts
+      .map(a => ({ heading: a.heading, body: serializeDocxBlocks(a.blocks) }))
+      .filter(a => !isMetaArticle(a));
   }
 
   // --- Heading matching (the doc's article order can differ from the HTML's) ---
@@ -864,6 +940,38 @@
     return decodeEntities(String(s || ''))
       .replace(/<[^>]*>/g, ' ').toLowerCase()
       .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Editorial-metadata blocks in the content doc (SEO/email fields) that must
+  // never become WPBakery articles. Matched on the normalized heading — either
+  // exact, or as a leading label (e.g. "Email Subject Line: Welcome!").
+  const META_HEADING_LABELS = [
+    'meta description', 'meta title',
+    'linkedin newsletter description', 'linkedin description', 'linkedin post',
+    'email subject line', 'email subject', 'subject line',
+    'preview text', 'preheader', 'pre header', 'preheader text',
+    'seo title', 'seo description',
+    'url slug', 'social description', 'og description',
+  ];
+  function isMetaHeading(h) {
+    const n = normHeading(h);
+    if (!n) return false;
+    return META_HEADING_LABELS.some(l => n === l || n.startsWith(l + ' '));
+  }
+
+  // The doc opens with an "issue cover" block: an 18pt heading naming the
+  // publication ("… Issue of the Home Care Post Bulletin"), whose BODY is the
+  // SEO/email metadata (Meta Description, LinkedIn/Email Subject, Preview Text,
+  // often numbered as bold labels). None of it is newsletter content — drop the
+  // whole block. Detected by the issue-title heading OR ≥2 metadata labels in body.
+  function isMetaArticle(a) {
+    if (isMetaHeading(a.heading)) return true;
+    const nh = normHeading(a.heading);
+    if (/\bpost bulletin\b/.test(nh) || /\bissue of the\b/.test(nh)) return true;
+    const bodyText = normHeading(a.body);
+    let hits = 0;
+    for (const l of META_HEADING_LABELS) { if (bodyText.includes(l)) hits++; }
+    return hits >= 2;
   }
   function headingTokens(s) {
     return new Set(normHeading(s).split(' ').filter(w => w.length > 2 && !HEADING_STOPWORDS.has(w)));
@@ -1133,6 +1241,13 @@
     return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Escapes text dropped straight into markup (e.g. an <h2>). The lookahead leaves
+  // existing entities alone, so "Olson Funeral & Cremation" becomes safe markup
+  // while an already-encoded "&amp;" / "&#39;" isn't double-escaped.
+  function escapeHeading(s) {
+    return (s || '').replace(/&(?![a-zA-Z#0-9]+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   function renderLayoutPreview() {
     const wrap = $('layoutPreviewBody');
     const summary = $('layoutPreview');
@@ -1195,7 +1310,7 @@
   //   * Forminator form row uses el_id="w" on the row and el_id="form-newsletter" on the raw_html block.
   function renderArticleInline(a) {
     const parts = [];
-    if (a.heading) parts.push(`<h2>${a.heading}</h2>`);
+    if (a.heading) parts.push(`<h2>${escapeHeading(a.heading)}</h2>`);
     // Strip link bold again at output time — guarantees clean links even if the body
     // was parsed before this rule existed or was hand-edited in the textarea.
     if (a.body) parts.push(stripLinkBold(a.body));
@@ -1236,6 +1351,182 @@
       out += `[vc_row el_id="w"][vc_column][vc_raw_html css="" el_id="form-newsletter"]${b64}[/vc_raw_html][/vc_column][/vc_row]`;
     }
     return out;
+  }
+
+  // ----- UTM tracking tags -----
+  // The client's HTML/docx arrive carrying LAST issue's utm tags. These helpers let
+  // you set the correct values once and rewrite every tracked link in one click.
+  // "Tracked" here means any link that already carries a utm_* parameter (any domain).
+  const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+  const UTM_FIELD = {
+    utm_source: 'utmSource', utm_medium: 'utmMedium',
+    utm_campaign: 'utmCampaign', utm_content: 'utmContent',
+  };
+
+  function decodeHref(h) { return String(h || '').replace(/&amp;/gi, '&'); }
+
+  function isTracked(href) { return /[?&]utm_[a-z_]+=/i.test(decodeHref(href)); }
+
+  function parseQuery(href) {
+    const q = {};
+    let dec = decodeHref(href);
+    const hash = dec.indexOf('#');
+    if (hash >= 0) dec = dec.slice(0, hash);
+    const i = dec.indexOf('?');
+    if (i < 0) return q;
+    dec.slice(i + 1).split('&').forEach(pair => {
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const k = eq < 0 ? pair : pair.slice(0, eq);
+      const v = eq < 0 ? '' : pair.slice(eq + 1);
+      if (k) q[k.toLowerCase()] = v;
+    });
+    return q;
+  }
+
+  // Pull every <a href> out of the article bodies, tagged with its article.
+  function collectOutputLinks() {
+    const links = [];
+    articles.forEach(a => {
+      const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+      let m;
+      while ((m = re.exec(a.body || ''))) {
+        const hm = m[1].match(/href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/i);
+        const href = hm ? (hm[1] != null ? hm[1] : hm[2]) : '';
+        if (!href) continue;
+        links.push({
+          href,
+          text: m[2].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
+          article: a.heading || '(untitled)',
+        });
+      }
+    });
+    return links;
+  }
+
+  // Prefill each field with the value the tracked links most agree on.
+  function guessUtm(links) {
+    const vals = {};
+    UTM_KEYS.forEach(k => {
+      const counts = new Map();
+      links.forEach(l => {
+        if (!isTracked(l.href)) return;
+        const v = parseQuery(l.href)[k];
+        if (v) counts.set(v, (counts.get(v) || 0) + 1);
+      });
+      let best = '', bestN = 0;
+      counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+      vals[k] = best;
+    });
+    return vals;
+  }
+
+  function currentUtmValues() {
+    const v = {};
+    UTM_KEYS.forEach(k => { v[k] = ($(UTM_FIELD[k]).value || '').trim(); });
+    return v;
+  }
+
+  // Pull the four utm_* values out of a pasted string — accepts a full URL,
+  // a "?a=b&c=d" query string, or a bare "a=b&c=d" list. Values are decoded so
+  // they display cleanly; applyUtmToHref re-encodes them on the way back out.
+  function parseUtmString(str) {
+    str = String(str || '').trim();
+    const out = {};
+    if (!str) return out;
+    const qi = str.indexOf('?');
+    let qs = qi >= 0 ? str.slice(qi + 1) : str;
+    const hi = qs.indexOf('#');
+    if (hi >= 0) qs = qs.slice(0, hi);
+    qs.split('&').forEach(pair => {
+      pair = pair.trim();
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const k = (eq < 0 ? pair : pair.slice(0, eq)).trim().toLowerCase();
+      let val = eq < 0 ? '' : pair.slice(eq + 1).trim();
+      if (!UTM_KEYS.includes(k)) return;
+      try { val = decodeURIComponent(val.replace(/\+/g, ' ')); } catch (e) { /* keep raw */ }
+      out[k] = val;
+    });
+    return out;
+  }
+
+  // Rewrite the filled-in utm_* params on a single href. Blank fields are left
+  // as-is; a filled field that's absent gets appended (before any #fragment).
+  function applyUtmToHref(href, values) {
+    if (!isTracked(href)) return href;
+    const sep = /&amp;/i.test(href) ? '&amp;' : '&';
+    let out = href;
+    UTM_KEYS.forEach(k => {
+      const val = values[k];
+      if (!val) return;
+      const enc = encodeURIComponent(val);
+      const re = new RegExp('(' + k + '=)[^&"#\\s]*', 'i');
+      if (re.test(out)) {
+        out = out.replace(re, '$1' + enc);
+      } else {
+        const hashIdx = out.indexOf('#');
+        const frag = hashIdx >= 0 ? out.slice(hashIdx) : '';
+        let base = hashIdx >= 0 ? out.slice(0, hashIdx) : out;
+        base += (base.indexOf('?') >= 0 ? sep : '?') + k + '=' + enc;
+        out = base + frag;
+      }
+    });
+    return out;
+  }
+
+  function applyUtmTags(values) {
+    let changed = 0;
+    articles.forEach(a => {
+      a.body = (a.body || '').replace(/href\s*=\s*"([^"]*)"/gi, (full, href) => {
+        const next = applyUtmToHref(href, values);
+        if (next !== href) changed++;
+        return 'href="' + next + '"';
+      });
+    });
+    return changed;
+  }
+
+  function renderUtmAudit(values) {
+    const box = $('linkAudit');
+    const links = collectOutputLinks();
+    const tracked = links.filter(l => isTracked(l.href));
+    if (!links.length) { box.innerHTML = ''; return; }
+
+    const issues = [];
+    UTM_KEYS.forEach(k => {
+      const target = values[k];
+      const distinct = new Set();
+      let stale = 0, missing = 0;
+      tracked.forEach(l => {
+        const val = parseQuery(l.href)[k];
+        if (val) distinct.add(val);
+        if (target) {
+          if (val && val !== target) stale++;
+          else if (!val) missing++;
+        }
+      });
+      if (target) {
+        if (stale) issues.push({ level: 'warn', msg: `${stale} link${stale === 1 ? '' : 's'} still carry an old ${k} (not "${target}") — click Apply to update.` });
+        if (missing) issues.push({ level: 'warn', msg: `${missing} tracked link${missing === 1 ? '' : 's'} missing ${k} — Apply will add "${target}".` });
+      } else if (distinct.size > 1) {
+        issues.push({ level: 'warn', msg: `Links carry ${distinct.size} different ${k} values: ${Array.from(distinct).join(', ')}. Set a value above to unify them.` });
+      }
+    });
+
+    const esc = escapeForTextarea;
+    let html = '<div class="audit-head">';
+    html += issues.length
+      ? `<span class="audit-pill warn">${issues.length} to check</span>`
+      : `<span class="audit-pill good">Tracking tags look consistent</span>`;
+    html += `<span class="audit-count">${tracked.length} tracked link${tracked.length === 1 ? '' : 's'} · ${links.length} total in output</span>`;
+    html += '</div>';
+    if (issues.length) {
+      html += '<ul class="audit-list">';
+      issues.forEach(i => { html += `<li class="${i.level}">${esc(i.msg)}</li>`; });
+      html += '</ul>';
+    }
+    box.innerHTML = html;
   }
 
   // ----- Wire input handlers -----
@@ -1350,7 +1641,40 @@
   $('generateBtn').addEventListener('click', () => {
     const code = generate();
     $('output').value = code;
+    // Prefill any empty UTM field from the links themselves, then audit.
+    const guessed = guessUtm(collectOutputLinks());
+    UTM_KEYS.forEach(k => {
+      const el = $(UTM_FIELD[k]);
+      if (!el.value.trim() && guessed[k]) el.value = guessed[k];
+    });
+    renderUtmAudit(currentUtmValues());
     $('outStatus').textContent = `Generated ${code.length.toLocaleString()} characters.`;
+  });
+
+  $('utmPaste').addEventListener('input', () => {
+    const parsed = parseUtmString($('utmPaste').value);
+    UTM_KEYS.forEach(k => { if (parsed[k] != null) $(UTM_FIELD[k]).value = parsed[k]; });
+    if ($('output').value) renderUtmAudit(currentUtmValues());
+  });
+
+  UTM_KEYS.forEach(k => {
+    $(UTM_FIELD[k]).addEventListener('input', () => {
+      if ($('output').value) renderUtmAudit(currentUtmValues());
+    });
+  });
+
+  $('applyUtmBtn').addEventListener('click', () => {
+    const values = currentUtmValues();
+    const status = $('outStatus');
+    if (!UTM_KEYS.some(k => values[k])) { status.textContent = 'Enter at least one UTM value first.'; return; }
+    const n = applyUtmTags(values);
+    renderArticles();
+    const code = generate();
+    $('output').value = code;
+    renderUtmAudit(currentUtmValues());
+    status.textContent = n
+      ? `Updated UTM tags on ${n} link${n === 1 ? '' : 's'}.`
+      : 'No links needed changing — every tracked link already matches.';
   });
 
   $('copyBtn').addEventListener('click', async () => {

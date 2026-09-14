@@ -205,15 +205,29 @@
 
   .out-textarea { min-height: 320px; }
   /* ----- Link & UTM audit ----- */
-  .issue-tag-row {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    margin-bottom: 12px; padding: 10px 12px;
+  .utm-row {
+    margin-bottom: 12px; padding: 12px;
     background: rgba(91,141,239,0.06);
     border: 1px solid var(--border); border-radius: 6px;
   }
-  .issue-tag-row label { margin: 0; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
-  .issue-tag-row input[type=text] { width: 240px; padding: 5px 8px; }
-  .issue-tag-row .hint { font-size: 12px; color: var(--text-muted); opacity: .8; flex: 1 1 260px; min-width: 220px; }
+  .utm-paste { margin-bottom: 12px; }
+  .utm-paste label {
+    margin: 0 0 4px; font-size: 11px; color: var(--text-dim);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-paste input {
+    padding: 7px 9px; font-size: 12px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .utm-fields { grid-template-columns: 1fr 1fr; } }
+  .utm-fields label {
+    margin: 0 0 4px; font-size: 11px; color: var(--text-dim);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  .utm-fields input { padding: 6px 8px; font-size: 12px; }
+  .utm-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .utm-actions .hint { margin: 0; flex: 1 1 260px; font-size: 12px; color: var(--text-muted); opacity: .85; }
   .link-audit { margin-bottom: 12px; }
   .link-audit:empty { display: none; }
   .audit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -371,11 +385,21 @@
       <input type="text" id="formId" value="11846" style="width: 90px; padding: 4px 8px;">
     </label>
   </div>
-  <div class="issue-tag-row">
-    <label for="issueTag">Issue tag (utm_content)</label>
-    <input type="text" id="issueTag" placeholder="e.g. elevate-august-2026">
-    <button class="tiny secondary" id="applyTagBtn">Apply to all tracked links</button>
-    <span class="hint">Every ringringmarketing.com link should carry this. Filled in from the links themselves — change it and click apply to fix a stale tag everywhere at once.</span>
+  <div class="utm-row">
+    <div class="utm-paste">
+      <label for="utmPaste">Paste the full UTM string from the email (splits into the fields below)</label>
+      <input type="text" id="utmPaste" placeholder="?utm_source=keap&utm_medium=email&utm_campaign=newsletter&utm_content=cemetery_insider_september_2026">
+    </div>
+    <div class="utm-fields">
+      <div><label for="utmSource">utm_source</label><input type="text" id="utmSource" placeholder="e.g. keap"></div>
+      <div><label for="utmMedium">utm_medium</label><input type="text" id="utmMedium" placeholder="e.g. email"></div>
+      <div><label for="utmCampaign">utm_campaign</label><input type="text" id="utmCampaign" placeholder="e.g. newsletter"></div>
+      <div><label for="utmContent">utm_content</label><input type="text" id="utmContent" placeholder="e.g. cemetery_insider_september_2026"></div>
+    </div>
+    <div class="utm-actions">
+      <button class="tiny secondary" id="applyUtmBtn">Apply to all tracked links</button>
+      <span class="hint">Prefilled from the links after you Generate. Rewrites these on every ringringmarketing.com / seniorcaremarketingmax.com link — leave a field blank to keep that parameter as-is.</span>
+    </div>
   </div>
   <div id="linkAudit" class="link-audit"></div>
   <textarea id="output" readonly class="out-textarea" placeholder="Click Generate to build the WPBakery code."></textarea>
@@ -712,12 +736,14 @@
         const heading = h2 ? textOfHeading(h2) : '';
 
         // Find body container(s) — typically a `<div class="v-text-align v-line-height v-font-size">`
-        // that does NOT contain the heading itself
+        // that does NOT contain the heading itself. `closest('.u-col') === col` keeps each block
+        // tied to its OWN column so an adjacent/nested column's blocks are never double-counted
+        // into two articles (which showed up as duplicated spill-over text).
         let bodyEls = Array.from(col.querySelectorAll('div.v-text-align'));
-        bodyEls = bodyEls.filter(d => !d.querySelector('h2') && d.querySelector('p, ul, ol, li'));
+        bodyEls = bodyEls.filter(d => d.closest('.u-col') === col && !d.querySelector('h2') && d.querySelector('p, ul, ol, li'));
         // If none found via Unlayer class, fall back to any div that has p/ul siblings of the h2
         if (!bodyEls.length) {
-          bodyEls = Array.from(col.querySelectorAll('div')).filter(d => !d.querySelector('h2') && d.querySelector(':scope > p, :scope > ul, :scope > ol'));
+          bodyEls = Array.from(col.querySelectorAll('div')).filter(d => d.closest('.u-col') === col && !d.querySelector('h2') && d.querySelector(':scope > p, :scope > ul, :scope > ol'));
         }
 
         // Combine body HTML
@@ -729,40 +755,43 @@
           return htmlNodesToWpText(wrap);
         };
 
-        // A long article spills out of its column: the NEXT column starts with
-        // continuation body blocks that sit before its own <h2>, and a column with no
-        // <h2> at all is pure continuation. Either way those blocks belong to the
-        // previous article — filing them under this column's heading is what put the
-        // wrong links (and the wrong "read more" URLs) under the wrong story.
-        let carryOver = [];
-        if (h2) {
-          const own = [];
+        // A long article spills out of its column: the next column can begin with
+        // continuation body blocks that sit BEFORE its own <h2>. The email design puts
+        // that spill-over at the TOP of the column it lands in, so we keep it there as a
+        // "lead-in" (rendered above this column's heading) instead of tacking it onto the
+        // previous column — which used to leave the first column much longer than the second.
+        // Split on TRUE document order (querySelectorAll returns nodes in order);
+        // compareDocumentPosition is unreliable on these deeply-nested email tables — it
+        // reports PRECEDING even for body that follows the heading, which mislocated/duplicated text.
+        let leadBody = '';
+        if (h2 && bodyEls.length) {
+          const ordered = Array.from(col.querySelectorAll('h2, div.v-text-align'));
+          const h2Idx = ordered.indexOf(h2);
+          const own = [], lead = [];
           bodyEls.forEach(d => {
-            // DOCUMENT_POSITION_PRECEDING === 2 → d comes before the heading
-            if (h2.compareDocumentPosition(d) & 2) carryOver.push(d);
+            const di = ordered.indexOf(d);
+            if (di !== -1 && di < h2Idx) lead.push(d);
             else own.push(d);
           });
           bodyEls = own;
-        } else if (arts.length) {
-          carryOver = bodyEls;
-          bodyEls = [];
+          if (lead.length) leadBody = toText(lead);
         }
-        if (carryOver.length) {
-          const extra = toText(carryOver);
-          if (extra) {
-            if (arts.length) {
-              const prev = arts[arts.length - 1];
-              prev.body = prev.body ? prev.body + '\n\n' + extra : extra;
-            } else {
-              bodyEls = carryOver.concat(bodyEls);
-            }
-          }
-        }
-
         const body = toText(bodyEls);
 
         // Skip if both heading and body are empty (e.g., pure image column)
         if (!heading && !body) return;
+
+        // A column/row with NO heading of its own is pure continuation of the previous
+        // article — e.g. the body sitting in its own full-width row below the heading's row,
+        // or an article that spills into a heading-less next column. Merge it into the previous
+        // article so the heading and its body stay in ONE row, instead of splitting into two
+        // rows with a gap. (Spill-over that DOES carry its own heading is handled above as
+        // leadBody, so this only catches truly heading-less blocks.)
+        if (!heading && arts.length) {
+          const prev = arts[arts.length - 1];
+          prev.body = prev.body ? prev.body + '\n\n' + body : body;
+          return;
+        }
 
         // Detect white text: explicit color on h2 or its container, or auto from dark bg
         const h2Style = h2 ? (h2.getAttribute('style') || '') : '';
@@ -776,6 +805,7 @@
         arts.push({
           id: nextId++,
           heading,
+          leadBody,
           body,
           rowIndex: rowIdx,
           column,
@@ -1272,12 +1302,16 @@
             </select>
           </div>
         </div>
+        ${a.leadBody ? `<label>Lead-in <span style="text-transform:none;color:var(--text-dim);font-weight:400;">(spill-over from a previous article — renders above this heading)</span></label>
+        <textarea class="lead-input">${escapeForTextarea(a.leadBody)}</textarea>` : ''}
         <label>Body (paragraphs separated by blank lines; lists allowed as &lt;ul&gt;/&lt;li&gt;)</label>
         <textarea class="body-input">${escapeForTextarea(a.body)}</textarea>
       `;
       // Wire field updates
       div.querySelector('.heading-input').addEventListener('input', e => { a.heading = e.target.value; });
       div.querySelector('.body-input').addEventListener('input', e => { a.body = e.target.value; });
+      const leadEl = div.querySelector('.lead-input');
+      if (leadEl) leadEl.addEventListener('input', e => { a.leadBody = e.target.value; });
       div.querySelector('.row-input').addEventListener('change', e => {
         const v = parseInt(e.target.value, 10);
         a.rowIndex = isNaN(v) || v < 1 ? 1 : v;
@@ -1443,36 +1477,74 @@
   function collectOutputLinks() {
     const links = [];
     articles.forEach(a => {
-      const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
-      let m;
-      while ((m = re.exec(a.body || ''))) {
-        const hm = m[1].match(/href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/i);
-        const href = hm ? (hm[1] != null ? hm[1] : hm[2]) : '';
-        if (!href || IGNORED_LINK_RE.test(href)) continue;
-        links.push({
-          href,
-          text: m[2].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
-          article: a.heading || '(untitled)',
-        });
-      }
+      [a.leadBody, a.body].forEach(src => {
+        const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+        let m;
+        while ((m = re.exec(src || ''))) {
+          const hm = m[1].match(/href\s*=\s*"([^"]*)"|href\s*=\s*'([^']*)'/i);
+          const href = hm ? (hm[1] != null ? hm[1] : hm[2]) : '';
+          if (!href || IGNORED_LINK_RE.test(href)) continue;
+          links.push({
+            href,
+            text: m[2].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
+            article: a.heading || '(untitled)',
+          });
+        }
+      });
     });
     return links;
   }
 
-  // The issue tag every tracked link should carry, e.g. "elevate-august-2026".
-  // Guessed from whatever the links already agree on, so the field starts populated.
-  function guessIssueTag(links) {
-    const counts = new Map();
-    links.forEach(l => {
-      const v = parseQuery(l.href).utm_content;
-      if (v) counts.set(v, (counts.get(v) || 0) + 1);
+  // The values every tracked link should carry this issue. Guessed from whatever the
+  // links already agree on, so the fields start populated with the current tags.
+  function guessUtm(links) {
+    const vals = {};
+    UTM_KEYS.forEach(k => {
+      const counts = new Map();
+      links.forEach(l => { const v = parseQuery(l.href)[k]; if (v) counts.set(v, (counts.get(v) || 0) + 1); });
+      let best = '', bestN = 0;
+      counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
+      vals[k] = best;
     });
-    let best = '', bestN = 0;
-    counts.forEach((n, v) => { if (n > bestN) { best = v; bestN = n; } });
-    return best;
+    return vals;
   }
 
-  function auditLinks(expectedTag) {
+  const UTM_FIELD = {
+    utm_source: 'utmSource', utm_medium: 'utmMedium',
+    utm_campaign: 'utmCampaign', utm_content: 'utmContent',
+  };
+
+  function currentUtmValues() {
+    const v = {};
+    UTM_KEYS.forEach(k => { v[k] = ($(UTM_FIELD[k]).value || '').trim(); });
+    return v;
+  }
+
+  // Pull the four utm_* values out of a pasted string — accepts a full URL, a
+  // "?a=b&c=d" query string, or a bare "a=b&c=d" list. Values are decoded for display;
+  // applyUtmToHref re-encodes them on the way back out.
+  function parseUtmString(str) {
+    str = String(str || '').trim();
+    const out = {};
+    if (!str) return out;
+    const qi = str.indexOf('?');
+    let qs = qi >= 0 ? str.slice(qi + 1) : str;
+    const hi = qs.indexOf('#');
+    if (hi >= 0) qs = qs.slice(0, hi);
+    qs.split('&').forEach(pair => {
+      pair = pair.trim();
+      if (!pair) return;
+      const eq = pair.indexOf('=');
+      const k = (eq < 0 ? pair : pair.slice(0, eq)).trim().toLowerCase();
+      let val = eq < 0 ? '' : pair.slice(eq + 1).trim();
+      if (!UTM_KEYS.includes(k)) return;
+      try { val = decodeURIComponent(val.replace(/\+/g, ' ')); } catch (e) { /* keep raw */ }
+      out[k] = val;
+    });
+    return out;
+  }
+
+  function auditLinks(values) {
     const links = collectOutputLinks();
     const issues = [];
     const seenHrefs = new Set(links.map(l => linkIdentity(l.href)));
@@ -1499,9 +1571,12 @@
         } else if (missing.length) {
           issues.push({ level: 'error', where, href: raw, msg: 'Missing UTM parameter' + (missing.length > 1 ? 's' : '') + ': ' + missing.join(', ') + '.' });
         }
-        if (expectedTag && q.utm_content && q.utm_content !== expectedTag) {
-          issues.push({ level: 'error', where, href: raw, msg: 'utm_content is "' + q.utm_content + '" but this issue is "' + expectedTag + '" — stale tag from a previous issue.' });
-        }
+        UTM_KEYS.forEach(k => {
+          const target = values[k];
+          if (target && q[k] && q[k] !== target) {
+            issues.push({ level: 'error', where, href: raw, msg: k + ' is "' + q[k] + '" but this issue is "' + target + '" — stale tag from a previous issue.' });
+          }
+        });
       }
     });
 
@@ -1523,35 +1598,60 @@
       issues.push({ level: 'warn', where: '(source)', href: d.href, msg: 'This link was in the source newsletter but is not in the generated code' + (d.text ? ' (linked text: "' + d.text + '")' : '') + '.' });
     });
 
-    const tags = new Set();
-    links.forEach(l => { const v = parseQuery(l.href).utm_content; if (v) tags.add(v); });
-    if (tags.size > 1) {
-      issues.push({ level: 'error', where: '(all links)', href: '', msg: 'Links carry ' + tags.size + ' different utm_content values: ' + Array.from(tags).join(', ') + '. They should all match this issue.' });
-    }
+    UTM_KEYS.forEach(k => {
+      if (values[k]) return; // a target is set → per-link stale checks already cover it
+      const vals = new Set();
+      links.forEach(l => { const v = parseQuery(l.href)[k]; if (v) vals.add(v); });
+      if (vals.size > 1) {
+        issues.push({ level: 'error', where: '(all links)', href: '', msg: 'Links carry ' + vals.size + ' different ' + k + ' values: ' + Array.from(vals).join(', ') + '. They should all match this issue.' });
+      }
+    });
 
     return { links, issues };
   }
 
-  // Rewrite utm_content on every tracked link so one edit fixes the whole issue.
-  function applyIssueTag(tag) {
-    if (!tag) return 0;
+  // Rewrite the filled-in utm_* params on a single tracked-host href. Blank fields are
+  // left as-is; a filled field that's absent gets appended (before any #fragment).
+  function applyUtmToHref(href, values) {
+    if (!TRACKED_HOST_RE.test(hostOf(href))) return href;
+    const sep = /&amp;/i.test(href) ? '&amp;' : '&';
+    let out = href;
+    UTM_KEYS.forEach(k => {
+      const val = values[k];
+      if (!val) return;
+      const enc = encodeURIComponent(val);
+      const re = new RegExp('(' + k + '=)[^&"#\\s]*', 'i');
+      if (re.test(out)) {
+        out = out.replace(re, '$1' + enc);
+      } else {
+        const hashIdx = out.indexOf('#');
+        const frag = hashIdx >= 0 ? out.slice(hashIdx) : '';
+        let base = hashIdx >= 0 ? out.slice(0, hashIdx) : out;
+        base += (base.indexOf('?') >= 0 ? sep : '?') + k + '=' + enc;
+        out = base + frag;
+      }
+    });
+    return out;
+  }
+
+  // Apply the fields to every tracked link so one edit fixes the whole issue.
+  function applyUtmTags(values) {
     let changed = 0;
+    const rewrite = html => (html || '').replace(/href\s*=\s*"([^"]*)"/gi, (full, href) => {
+      const next = applyUtmToHref(href, values);
+      if (next !== href) changed++;
+      return 'href="' + next + '"';
+    });
     articles.forEach(a => {
-      a.body = (a.body || '').replace(/href\s*=\s*"([^"]*)"/gi, (full, href) => {
-        if (!TRACKED_HOST_RE.test(hostOf(href))) return full;
-        const q = parseQuery(href);
-        if (!q.utm_content || q.utm_content === tag) return full;
-        const next = href.replace(/(utm_content=)[^&"]*/i, '$1' + tag);
-        if (next !== href) changed++;
-        return 'href="' + next + '"';
-      });
+      a.body = rewrite(a.body);
+      if (a.leadBody) a.leadBody = rewrite(a.leadBody);
     });
     return changed;
   }
 
-  function renderLinkAudit(expectedTag) {
+  function renderLinkAudit(values) {
     const box = $('linkAudit');
-    const { links, issues } = auditLinks(expectedTag);
+    const { links, issues } = auditLinks(values);
     if (!links.length && !sourceLinks.length) { box.innerHTML = ''; return; }
     const errors = issues.filter(i => i.level === 'error');
     const warns = issues.filter(i => i.level === 'warn');
@@ -1578,6 +1678,11 @@
   function renderArticleShortcode(a, whiteText) {
     const cls = whiteText ? ' el_class="pw text-white"' : '';
     const parts = [];
+    // Spill-over continuation from a previous article renders ABOVE this column's
+    // heading, matching where the email design places it (top of the column).
+    if (a.leadBody) {
+      parts.push(`[vc_column_text css=""${cls}]${stripLinkBold(a.leadBody)}[/vc_column_text]`);
+    }
     if (a.heading) {
       // Headings come from Word/HTML as plain text, so a bare "&" in a name like
       // "Olson Funeral & Cremation" has to be escaped before it lands in markup.
@@ -1746,30 +1851,40 @@
   $('generateBtn').addEventListener('click', () => {
     const code = generate();
     $('output').value = code;
-    // Fill the issue tag from the links themselves the first time, then audit.
-    const tagEl = $('issueTag');
-    if (!tagEl.value.trim()) tagEl.value = guessIssueTag(collectOutputLinks());
-    renderLinkAudit(tagEl.value.trim());
+    // Prefill any empty UTM field from the links themselves, then audit.
+    const guessed = guessUtm(collectOutputLinks());
+    UTM_KEYS.forEach(k => {
+      const el = $(UTM_FIELD[k]);
+      if (!el.value.trim() && guessed[k]) el.value = guessed[k];
+    });
+    renderLinkAudit(currentUtmValues());
     $('outStatus').textContent = `Generated ${code.length.toLocaleString()} characters.`;
   });
 
-  $('issueTag').addEventListener('input', () => {
-    if ($('output').value) renderLinkAudit($('issueTag').value.trim());
+  $('utmPaste').addEventListener('input', () => {
+    const parsed = parseUtmString($('utmPaste').value);
+    UTM_KEYS.forEach(k => { if (parsed[k] != null) $(UTM_FIELD[k]).value = parsed[k]; });
+    if ($('output').value) renderLinkAudit(currentUtmValues());
   });
 
-  $('applyTagBtn').addEventListener('click', () => {
-    const tag = $('issueTag').value.trim();
+  UTM_KEYS.forEach(k => {
+    $(UTM_FIELD[k]).addEventListener('input', () => {
+      if ($('output').value) renderLinkAudit(currentUtmValues());
+    });
+  });
+
+  $('applyUtmBtn').addEventListener('click', () => {
+    const values = currentUtmValues();
     const status = $('outStatus');
-    if (!tag) { status.textContent = 'Enter an issue tag first.'; return; }
-    const n = applyIssueTag(tag);
+    if (!UTM_KEYS.some(k => values[k])) { status.textContent = 'Enter at least one UTM value first.'; return; }
+    const n = applyUtmTags(values);
     renderArticles();
-    renderLayoutPreview();
     const code = generate();
     $('output').value = code;
-    renderLinkAudit(tag);
+    renderLinkAudit(currentUtmValues());
     status.textContent = n
-      ? `Rewrote utm_content on ${n} link${n === 1 ? '' : 's'} to "${tag}".`
-      : `No links needed changing — every tracked link already uses "${tag}".`;
+      ? `Updated UTM tags on ${n} link${n === 1 ? '' : 's'}.`
+      : 'No links needed changing — every tracked link already matches.';
   });
 
   $('copyBtn').addEventListener('click', async () => {
