@@ -24,7 +24,7 @@ Drop the monthly ZIP (one `.docx` + one image per post — typically 4 or 5, one
    safe fixes, and your edits carry through to the WordPress fill.
 3. Walks you through the posts one at a time — **Post 2 of 4** — with a **Fill
    This Post** button that fills the WordPress Classic Editor tab you have open
-   (Title, Date @ 4:00 AM, Author *Welton Hong*, Yoast SEO Title + Meta
+   (Title, Date @ 12:00 AM, Author *Welton Hong*, Yoast SEO Title + Meta
    Description, Category, and the HTML content).
 4. Saves progress to the extension's own storage, so closing the browser
    mid-batch and reopening the panel **resumes where you left off**.
@@ -58,7 +58,7 @@ Hospice Haven), the panel shows a **Send all to WordPress** box above the posts:
 2. Keep any post page on that site open as the active tab (it uses your login).
 3. Click **Send N posts**. Each pending post is created with its featured image,
    both categories (e.g. Funeral + Funeral → Blogs), author *Welton Hong*, the
-   4:00 AM date, Yoast SEO Title, Meta Description and Primary Category. The
+   12:00 AM date, Yoast SEO Title, Meta Description and Primary Category. The
    featured image is also copied into Yoast's **Social image** and **X image** so
    shared links show the image on X / Facebook / LinkedIn (Yoast Free doesn't
    reliably fall back to the featured image on its own).

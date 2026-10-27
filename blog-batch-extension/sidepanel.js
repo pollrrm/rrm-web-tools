@@ -56,7 +56,7 @@ const SITES = [
 ];
 
 const AUTHOR_NAME = 'Welton Hong';
-const PUBLISH_HOUR = 4; // 4:00 AM site time
+const PUBLISH_HOUR = 0; // 12:00 AM (midnight) site time
 
 // Posts are written ahead of time, so a month earlier than the current one
 // belongs to next year (a January batch prepared in December).
@@ -1222,7 +1222,7 @@ function renderApiBox(site) {
         apiBusy ? `<span class="spinner"></span>Sending ${Math.min(apiBusy.done + 1, apiBusy.total)} of ${apiBusy.total}…`
         : toSend ? `Send ${toSend} post${toSend > 1 ? 's' : ''}` : 'All posts sent'}</button>
     </div>
-    <div class="api-note">Creates each post with its featured image, categories, author, ${PUBLISH_HOUR}:00 AM date and Yoast fields. Needs one ${escapeHtml(site.host)} post page open as the active tab. Sent, skipped and filled posts are left alone.</div>`;
+    <div class="api-note">Creates each post with its featured image, categories, author, ${(PUBLISH_HOUR % 12) || 12}:00 ${PUBLISH_HOUR < 12 ? 'AM' : 'PM'} date and Yoast fields. Needs one ${escapeHtml(site.host)} post page open as the active tab. Sent, skipped and filled posts are left alone.</div>`;
   results.appendChild(box);
   box.querySelector('#apiStatus').addEventListener('change', (e) => { queue.apiStatus = e.target.value; saveQueue(); });
   box.querySelector('#apiSendBtn').addEventListener('click', () => sendAllViaApi(site));
