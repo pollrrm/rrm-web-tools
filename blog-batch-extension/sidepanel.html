@@ -79,13 +79,21 @@
   .dropzone:hover, .dropzone.drag { border-color: #6cd17b; background: #1c2230; }
   .dropzone .big { font-size: 12px; color: #e6e6e6; margin-bottom: 4px; }
   .dropzone .small { font-size: 10px; color: #8a93a3; }
-  .dropzone input[type=file] { display: none; }
+  #file { display: none !important; }
   .dropzone .pick {
     display: inline-block; margin-top: 8px; padding: 5px 10px;
     background: #6cd17b; color: #0f1115; border-radius: 4px;
     font-size: 11px; font-weight: 600;
   }
   .err { color: #ff7676; font-size: 11px; margin-top: 6px; }
+
+  .opt-row {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: #b8bdc8; margin-bottom: 6px;
+    cursor: pointer; user-select: none;
+  }
+  .opt-row input { accent-color: #6cd17b; cursor: pointer; margin: 0; }
+  .opt-hint { font-size: 10px; color: #6a7180; margin: 0 0 10px; }
 
   /* ---- Batch queue ---- */
   .batch-head {
@@ -106,6 +114,23 @@
   .rail .chip.current { border-color: #5b8def; color: #cddcff; }
   .rail .chip.filled    { border-color: #2d7a3e; color: #6cd17b; }
   .rail .chip.scheduled { border-color: #2d7a3e; color: #6cd17b; }
+  .rail .chip.drafted   { border-color: #2d7a3e; color: #6cd17b; }
+  .rail .chip.exists    { border-color: #c08a3e; color: #ffb04d; }
+
+  /* Send all via API */
+  .api-box {
+    background: #181b22; border: 1px solid #2d7a3e; border-radius: 8px;
+    padding: 10px; margin-bottom: 10px;
+  }
+  .api-head { font-size: 12px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .api-row { display: flex; gap: 6px; }
+  .api-row select {
+    background: #0f1115; border: 1px solid #2a2f3a; color: #e6e6e6;
+    padding: 6px 8px; border-radius: 6px; font-size: 12px; font-family: inherit;
+  }
+  .api-row button { flex: 1; }
+  .api-note { font-size: 10px; color: #8a93a3; margin-top: 6px; }
+  .fill-note a { color: #8fb4ff; }
   .rail .chip.skipped   { border-color: #6a7180; color: #6a7180; text-decoration: line-through; }
   .rail .chip.error     { border-color: #a33; color: #ff7676; }
 
@@ -239,12 +264,17 @@
 
 <div id="tabStatus" class="status-line">Checking active tab…</div>
 
-<label class="dropzone" id="drop">
+<div class="dropzone" id="drop">
   <div class="big">Drop the monthly ZIP here</div>
   <div class="small">or click to pick a .zip (all the month's posts) or a single .docx</div>
-  <div class="pick">Choose file</div>
-  <input type="file" id="file" accept=".zip,.docx">
-</label>
+  <span class="pick">Choose file</span>
+</div>
+<input type="file" id="file" accept=".zip,.docx" hidden>
+
+<label class="opt-row"><input type="checkbox" id="optToggle" checked> Optimize images (85%)</label>
+<div class="opt-hint">Shrinks each image before upload. Untick if the ZIP is already optimized.</div>
+<div id="optSummary" class="status-line ok" style="display:none;"></div>
+
 <div id="errMsg" class="err"></div>
 
 <div id="results"></div>

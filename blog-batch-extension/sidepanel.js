@@ -1,20 +1,25 @@
 // RRM Blog Batch Helper — side panel.
 //
-// Flow:  drop a monthly ZIP (4 .docx + 4 images)  →  unzip + pair + parse all
-//        →  write a resumable QUEUE to chrome.storage.local  →  walk through the
-//        posts one at a time, filling each into the active WP New Post tab via
-//        chrome.tabs.sendMessage({type:'RRM_BATCH_FILL_POST', payload}).
+// Flow:  drop a monthly ZIP (4 .docx + 4 images)  →  unzip + pair + optimize
+//        images (85%, ported from image-fixer-batch.html; toggleable)  →  parse
+//        all  →  write a resumable QUEUE to chrome.storage.local  →  walk through
+//        the posts one at a time, filling each into the active WP New Post tab via
+//        chrome.tabs.sendMessage({type:'RRM_BATCH_FILL_POST', payload}), or send
+//        them all through the WordPress REST API (content-api.js).
 //
 // This extension is fully self-contained: the parser and SITES config below are
 // COPIED from the RRM Blog Helper extension (not shared), so nothing in that
 // extension is touched. A single .docx is also accepted as a one-post batch.
 
 // ============================================================================
-// SITES — copied verbatim from the RRM Blog Helper extension.
+// SITES — copied from the RRM Blog Helper extension. `api: true` marks sites
+// set up for "Send all via API" (Yoast REST snippet installed + verified);
+// the other sites use the Fill This Post walk-through only.
 // ============================================================================
 const SITES = [
   {
     id: 'rrmathome', name: 'RRM@home', host: 'rrmathome.com', hostRe: /(^|\.)rrmathome\.com$/i,
+    api: true, // REST API sending verified 2026-10-27 (Blogs cat 41, author Welton Hong id 7, Yoast REST snippet active)
     aliases: ['rrmathome','rrm@home','rrm at home','rrmhome'],
     topics: [
       { id: 'flooring', name: 'Flooring',          categoryPath: ['Blogs'], primaryCategory: null },
@@ -24,6 +29,7 @@ const SITES = [
   },
   {
     id: 'rrm', name: 'RRM (ringringmarketing.com)', host: 'ringringmarketing.com', hostRe: /(^|\.)ringringmarketing\.com$/i,
+    api: true, // REST API sending verified 2026-10-22 (Yoast REST snippet active)
     aliases: ['rrm','ringringmarketing','ring ring marketing'],
     topics: [
       { id: 'funeral',  name: 'Funeral',  categoryPath: ['Funeral',  'Blogs'], primaryCategory: 'Funeral'  },
@@ -32,6 +38,7 @@ const SITES = [
   },
   {
     id: 'scmm', name: 'SCMM', host: 'seniorcaremarketingmax.com', hostRe: /(^|\.)seniorcaremarketingmax\.com$/i,
+    api: true, // REST API verified 2026-10-27 (Blogs cat 42, author Welton Hong id 7, Yoast + social-image snippet active)
     aliases: ['scmm','seniorcaremarketingmax','senior care marketing max'],
     topics: [
       { id: 'homehealth', name: 'Home Health', categoryPath: ['Blogs'], primaryCategory: null },
@@ -40,12 +47,23 @@ const SITES = [
   },
   {
     id: 'hospice', name: 'Hospice Haven', host: 'hospicehavenmarketing.com', hostRe: /(^|\.)hospicehavenmarketing\.com$/i,
+    api: true, // REST API verified 2026-10-27 (Blogs cat 42, author Welton Hong id 7, Yoast + social-image snippet active)
     aliases: ['hospice','hospice haven','hospicehaven','hospicehavenmarketing'],
     topics: [
       { id: 'hospice', name: 'Hospice', categoryPath: ['Blogs'], primaryCategory: null }
     ]
   }
 ];
+
+const AUTHOR_NAME = 'Welton Hong';
+const PUBLISH_HOUR = 4; // 4:00 AM site time
+
+// Posts are written ahead of time, so a month earlier than the current one
+// belongs to next year (a January batch prepared in December).
+function postYear(mm) {
+  const now = new Date();
+  return mm < now.getMonth() + 1 ? now.getFullYear() + 1 : now.getFullYear();
+}
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -71,6 +89,7 @@ let queue = null;                 // the in-memory mirror of the stored queue
 let selectedSite = SITES[0];
 let selectedTopic = SITES[0].topics[0];
 let canFill = false;
+let apiBusy = null;               // { done, total } while "Send all via API" runs
 
 // ============================================================================
 // DOM refs
@@ -83,6 +102,8 @@ const drop        = document.getElementById('drop');
 const fileInput   = document.getElementById('file');
 const errMsg      = document.getElementById('errMsg');
 const results     = document.getElementById('results');
+const optToggle   = document.getElementById('optToggle');
+const optSummary  = document.getElementById('optSummary');
 
 // ============================================================================
 // Site / topic dropdowns
@@ -175,6 +196,7 @@ chrome.tabs.onUpdated.addListener((id, info) => {
 function refreshFillButtons() {
   results.querySelectorAll('.fill-btn').forEach(btn => {
     if (btn.classList.contains('busy')) return;
+    if (btn.id === 'apiSendBtn' && (apiBusy || !queue || !sendablePosts().length)) return;
     btn.disabled = !canFill;
     btn.title = canFill ? '' : `Open a New Post page on ${(queue ? SITES.find(s=>s.id===queue.siteId)?.host : selectedSite.host)} first`;
   });
@@ -373,6 +395,118 @@ async function imageToDataUrl(zipObj, name) {
   const ext = extOf(name);
   const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
   return `data:${mime};base64,${b64}`;
+}
+
+// ============================================================================
+// Image optimizer — ported from image-fixer-batch.html. Each paired image is
+// shrunk before upload using that tool's shipped defaults: 85% quality, keep
+// original format + dimensions, no size cap, rename spaces → dashes. Runs
+// entirely in the panel (createImageBitmap + canvas), no network, no new libs.
+// Safety carried over: if "optimized" is not smaller, or decode fails, the
+// original bytes are kept so nothing is lost or degraded.
+// ============================================================================
+const OPT_DEFAULTS = { quality: 0.85, outFormat: 'original', targetWidth: null, targetKB: null, allowUpscale: false, doRename: true };
+
+function optOutExt(srcExt, fmt) {
+  if (fmt === 'jpg') return 'jpg';
+  if (fmt === 'webp') return 'webp';
+  if (fmt === 'png') return 'png';
+  return srcExt === 'jpeg' ? 'jpg' : srcExt; // 'original' — normalize jpeg→jpg
+}
+function optMime(outExt) {
+  if (outExt === 'png') return 'image/png';
+  if (outExt === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+function optFileName(origName, srcExt, fmt, doRename) {
+  const dot = origName.lastIndexOf('.');
+  let base = dot >= 0 ? origName.slice(0, dot) : origName;
+  if (doRename) base = base.replace(/\s+/g, '-').replace(/-+/g, '-');
+  return base + '.' + optOutExt(srcExt, fmt);
+}
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' KB';
+  return (b / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+async function decodeImageBlob(blob) {
+  try { return await createImageBitmap(blob); }
+  catch (e) {
+    return await new Promise((res, rej) => {
+      const url = URL.createObjectURL(blob);
+      const im = new Image();
+      im.onload = () => { URL.revokeObjectURL(url); res(im); };
+      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('decode failed')); };
+      im.src = url;
+    });
+  }
+}
+
+async function optimizeImageBlob(blob, srcExt, opts) {
+  const bitmap = await decodeImageBlob(blob);
+  let w = bitmap.width, h = bitmap.height;
+  if (opts.targetWidth && (opts.allowUpscale || opts.targetWidth < w)) {
+    const scale = opts.targetWidth / w;
+    w = Math.round(w * scale); h = Math.round(h * scale);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const mime = optMime(optOutExt(srcExt, opts.outFormat));
+  if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); } // flatten transparency to white
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  if (bitmap.close) bitmap.close();
+  const toBlob = (q) => new Promise(res => canvas.toBlob(res, mime, q));
+  let q = opts.quality;
+  let out = await toBlob(q);
+  if (opts.targetKB && mime !== 'image/png') {
+    let tries = 0;
+    while (out && out.size / 1024 > opts.targetKB && q > 0.12 && tries < 14) {
+      q = Math.max(0.12, q - 0.07); out = await toBlob(q); tries++;
+    }
+  }
+  if (!out) throw new Error('encode failed');
+  return out;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Turn a paired zip image entry into the queue's { name, dataUrl }, optionally
+// optimized. Also returns byte sizes so the panel can show total savings.
+async function imageEntryToImage(entry, optimize) {
+  const origName = basename(entry.path);
+  if (!optimize) {
+    return { name: origName, dataUrl: await imageToDataUrl(entry.obj, origName), origSize: null, newSize: null, changed: false };
+  }
+  const srcExt = extOf(origName);
+  // GIF passes through untouched (canvas would flatten animation and the
+  // kept-extension/jpeg-body mismatch confuses the WP upload). Blog images are
+  // JPG/PNG in practice, so this only guards a rare edge.
+  if (srcExt === 'gif') {
+    return { name: origName, dataUrl: await imageToDataUrl(entry.obj, origName), origSize: null, newSize: null, changed: false };
+  }
+  const origBlob = await entry.obj.async('blob');
+  try {
+    const opt = await optimizeImageBlob(origBlob, srcExt, OPT_DEFAULTS);
+    if (opt.size < origBlob.size) {
+      const name = optFileName(origName, srcExt, OPT_DEFAULTS.outFormat, OPT_DEFAULTS.doRename);
+      return { name, dataUrl: await blobToDataUrl(opt), origSize: origBlob.size, newSize: opt.size, changed: true };
+    }
+  } catch (e) {
+    console.warn('[RRM Blog Batch] optimize failed, keeping original:', origName, e);
+  }
+  // Not smaller, or failed — keep the original bytes (and correct mime), just rename.
+  const name = optFileName(origName, srcExt, 'original', OPT_DEFAULTS.doRename);
+  return { name, dataUrl: await imageToDataUrl(entry.obj, name), origSize: origBlob.size, newSize: origBlob.size, changed: false };
 }
 
 // ============================================================================
@@ -727,6 +861,7 @@ function nextPendingIndex(from) {
 // ============================================================================
 async function handleFile(file) {
   errMsg.textContent = '';
+  if (optSummary) { optSummary.style.display = 'none'; optSummary.textContent = ''; }
   const ext = extOf(file.name);
   if (ext === 'zip') return handleZip(file);
   if (ext === 'docx') return handleDocx(file);
@@ -747,6 +882,8 @@ function detectSiteTopicFromName(name) {
 
 async function buildQueueFromPairs(pairs, sourceName) {
   const topic = selectedTopic;
+  const optimize = optToggle ? optToggle.checked : true;
+  let optCount = 0, optChanged = 0, optOrig = 0, optNew = 0;
   const posts = [];
   for (const pair of pairs) {
     const buf = await pair.docx.obj.async('arraybuffer');
@@ -755,8 +892,9 @@ async function buildQueueFromPairs(pairs, sourceName) {
     const parsed = parseDocxHtml(conv.value, docxName);
     let image = null;
     if (pair.image) {
-      const imgName = basename(pair.image.path);
-      image = { name: imgName, dataUrl: await imageToDataUrl(pair.image.obj, imgName) };
+      const im = await imageEntryToImage(pair.image, optimize);
+      image = { name: im.name, dataUrl: im.dataUrl };
+      if (optimize && im.origSize != null) { optCount++; optOrig += im.origSize; optNew += im.newSize; if (im.changed) optChanged++; }
     }
     posts.push({
       idx: 0, // set after sort
@@ -779,7 +917,7 @@ async function buildQueueFromPairs(pairs, sourceName) {
 
   const now = Date.now();
   const first = posts.find(p => p.dateMM);
-  const ym = first ? `${new Date().getFullYear()}-${String(first.dateMM).padStart(2, '0')}` : `${new Date().getFullYear()}`;
+  const ym = first ? `${postYear(first.dateMM)}-${String(first.dateMM).padStart(2, '0')}` : `${new Date().getFullYear()}`;
   queue = {
     schemaVersion: 1,
     batchId: `${selectedSite.id}_${topic ? topic.id : 'blogs'}_${ym}`,
@@ -794,6 +932,16 @@ async function buildQueueFromPairs(pairs, sourceName) {
   };
   const ok = await saveQueue();
   if (ok) { refreshTabStatus(); render(); }
+  showOptSummary(optimize, optCount, optChanged, optOrig, optNew);
+}
+
+function showOptSummary(optimize, count, changed, orig, neu) {
+  if (!optSummary) return;
+  if (!optimize || count === 0) { optSummary.style.display = 'none'; optSummary.textContent = ''; return; }
+  const pct = orig > 0 ? Math.round((1 - neu / orig) * 100) : 0;
+  optSummary.className = 'status-line ok';
+  optSummary.style.display = 'block';
+  optSummary.textContent = `Optimized ${changed} of ${count} image${count !== 1 ? 's' : ''} — ${fmtBytes(orig)} → ${fmtBytes(neu)} (${pct}% smaller)`;
 }
 
 async function handleZip(file) {
@@ -936,7 +1084,7 @@ function render() {
 
   const n = queue.posts.length;
   const cur = queue.posts[queue.cursor];
-  const doneCount = queue.posts.filter(p => p.status === 'filled' || p.status === 'scheduled').length;
+  const doneCount = queue.posts.filter(p => DONE_STATUSES.includes(p.status)).length;
 
   // Head + clear
   const head = document.createElement('div');
@@ -945,6 +1093,8 @@ function render() {
     <span class="counter">Post ${queue.cursor + 1} of ${n} · ${doneCount} done</span>
     <button class="clear" id="clearBatch">Clear batch</button>`;
   results.appendChild(head);
+  const site = SITES.find(s => s.id === queue.siteId);
+  if (site && site.api) renderApiBox(site);
   head.querySelector('#clearBatch').addEventListener('click', async () => {
     if (confirm('Clear this batch and return to the drop screen? Progress will be discarded.')) await clearQueue();
   });
@@ -955,7 +1105,7 @@ function render() {
   queue.posts.forEach((p, i) => {
     const chip = document.createElement('div');
     chip.className = 'chip ' + (i === queue.cursor ? 'current ' : '') + p.status;
-    const mark = p.status === 'filled' || p.status === 'scheduled' ? '✓' : p.status === 'skipped' ? '–' : p.status === 'error' ? '✗' : (i + 1);
+    const mark = DONE_STATUSES.includes(p.status) ? '✓' : p.status === 'skipped' ? '–' : p.status === 'error' ? '✗' : (i + 1);
     chip.textContent = mark;
     chip.title = `Post ${i + 1}: ${p.title || p.docxName} (${p.status})`;
     chip.addEventListener('click', () => { queue.cursor = i; saveQueue(); render(); });
@@ -996,7 +1146,9 @@ function render() {
       <button class="fill-btn" id="fillBtn" ${canFill ? '' : 'disabled'}>${cur.status === 'filled' ? 'Filled ✓ — Re-fill' : cur.status === 'error' ? 'Retry Fill' : 'Fill This Post'}</button>
     </div>
     ${cur.status === 'filled' ? '<div class="fill-note ok">Filled. Review in WordPress, then Next → when ready.</div>' : ''}
-    ${cur.status === 'error' && cur.error ? `<div class="fill-note err">Fill error: ${escapeHtml(cur.error)}</div>` : ''}`;
+    ${cur.wpUrl ? `<div class="fill-note ok">${escapeHtml(sentLabel(cur))} — <a href="${escapeHtml(cur.wpUrl)}" target="_blank">open in WordPress</a></div>` : ''}
+    ${cur.apiNote ? `<div class="fill-note err">${escapeHtml(cur.apiNote)}</div>` : ''}
+    ${cur.status === 'error' && cur.error ? `<div class="fill-note err">Error: ${escapeHtml(cur.error)}</div>` : ''}`;
   results.appendChild(card);
   attachCopyHandlers(card);
 
@@ -1030,23 +1182,128 @@ function render() {
   refreshFillButtons();
 }
 
+// ============================================================================
+// Send all via REST API (sites with `api: true`) — see content-api.js
+// ============================================================================
+const DONE_STATUSES = ['filled', 'scheduled', 'drafted', 'exists'];
+
+function sentLabel(p) {
+  if (p.status === 'scheduled') return `Scheduled ✓ ${p.wpDate ? p.wpDate.replace('T', ' ').slice(0, 16) : ''}`.trim();
+  if (p.status === 'drafted')   return 'Saved as Draft ✓';
+  if (p.status === 'exists')    return `Already in WordPress (${p.wpStatus || 'exists'}) — not re-created`;
+  return 'Sent';
+}
+
+function qualityErrorCount(post) {
+  const c = runAllChecks(post);
+  return [...(post.warnings || []), ...c.format, ...c.consistency, ...c.structure, ...c.parity]
+    .filter(i => i.sev === 'error').length;
+}
+
+// Pending and previously-failed posts only. Sent, skipped and editor-filled
+// posts are never re-sent.
+function sendablePosts() {
+  return queue.posts.filter(p => p.status === 'pending' || p.status === 'error');
+}
+
+function renderApiBox(site) {
+  const box = document.createElement('div');
+  box.className = 'api-box';
+  const toSend = sendablePosts().length;
+  const status = queue.apiStatus || 'future';
+  box.innerHTML = `
+    <div class="api-head">Send all to WordPress <span class="scope">API</span></div>
+    <div class="api-row">
+      <select id="apiStatus" ${apiBusy ? 'disabled' : ''}>
+        <option value="future" ${status === 'future' ? 'selected' : ''}>Scheduled</option>
+        <option value="draft" ${status === 'draft' ? 'selected' : ''}>Draft</option>
+      </select>
+      <button class="fill-btn" id="apiSendBtn" ${apiBusy || !toSend || !canFill ? 'disabled' : ''}>${
+        apiBusy ? `<span class="spinner"></span>Sending ${Math.min(apiBusy.done + 1, apiBusy.total)} of ${apiBusy.total}…`
+        : toSend ? `Send ${toSend} post${toSend > 1 ? 's' : ''}` : 'All posts sent'}</button>
+    </div>
+    <div class="api-note">Creates each post with its featured image, categories, author, ${PUBLISH_HOUR}:00 AM date and Yoast fields. Needs one ${escapeHtml(site.host)} post page open as the active tab. Sent, skipped and filled posts are left alone.</div>`;
+  results.appendChild(box);
+  box.querySelector('#apiStatus').addEventListener('change', (e) => { queue.apiStatus = e.target.value; saveQueue(); });
+  box.querySelector('#apiSendBtn').addEventListener('click', () => sendAllViaApi(site));
+}
+
+async function sendAllViaApi(site) {
+  if (!queue || apiBusy) return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.id) return;
+  const posts = sendablePosts();
+  if (!posts.length) return;
+  const status = queue.apiStatus || 'future';
+  const withErrors = posts.filter(p => qualityErrorCount(p) > 0).length;
+  const msg = `Send ${posts.length} post${posts.length > 1 ? 's' : ''} to ${site.host} as ${status === 'future' ? 'Scheduled' : 'Draft'}?` +
+    (withErrors ? `\n\n${withErrors} of them still ${withErrors > 1 ? 'have' : 'has'} Quality Check errors.` : '');
+  if (!confirm(msg)) return;
+
+  apiBusy = { done: 0, total: posts.length };
+  render();
+  for (const post of posts) {
+    post.apiNote = null;
+    if (!post.dateMM || !post.dateDD) {
+      post.status = 'error';
+      post.error = 'No date found in the .docx — fill this one manually.';
+    } else {
+      const pad = (n) => String(n).padStart(2, '0');
+      const payload = {
+        title: post.title || '',
+        content: post.contentHtml || '',
+        seoTitle: post.seoTitle || '',
+        metaDesc: post.metaDesc || '',
+        authorName: AUTHOR_NAME,
+        categoryPath: queue.categoryPath || ['Blogs'],
+        primaryCategory: queue.primaryCategory || null,
+        date: `${postYear(post.dateMM)}-${pad(post.dateMM)}-${pad(post.dateDD)}T${pad(PUBLISH_HOUR)}:00:00`,
+        status,
+        image: post.image || null
+      };
+      try {
+        const res = await chrome.tabs.sendMessage(tab.id, { type: 'RRM_BATCH_API_CREATE', payload });
+        if (res && res.ok) {
+          post.status = res.duplicate ? 'exists' : res.status === 'future' ? 'scheduled' : 'drafted';
+          post.wpPostId = res.id;
+          post.wpUrl = res.editUrl;
+          post.wpStatus = res.status;
+          post.wpDate = res.date;
+          post.apiNote = res.note || null;
+          post.error = null;
+        } else {
+          post.status = 'error';
+          post.error = (res && res.error) || 'API send failed';
+        }
+      } catch (e) {
+        post.status = 'error';
+        post.error = `Could not reach the WordPress tab — keep a ${site.host} post page open as the active tab.`;
+      }
+    }
+    apiBusy.done++;
+    await saveQueue();
+    render();
+  }
+  apiBusy = null;
+  render();
+}
+
 async function fillCurrent(btn) {
   if (!queue) return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.id) return;
   const post = queue.posts[queue.cursor];
-  const year = new Date().getFullYear();
   const payload = {
     title: post.title || '',
     content: post.contentHtml || '',
     metaDesc: post.metaDesc || '',
     seoTitle: post.seoTitle || '',
-    author: 'Welton Hong',
+    author: AUTHOR_NAME,
     filename: post.docxName,
     categories: queue.categoryPath || ['Blogs'],
     primaryCategory: queue.primaryCategory || null,
     publishDate: (post.dateMM && post.dateDD)
-      ? { year, month: post.dateMM, day: post.dateDD, hour: 4, minute: 0 }
+      ? { year: postYear(post.dateMM), month: post.dateMM, day: post.dateDD, hour: PUBLISH_HOUR, minute: 0 }
       : null
   };
 

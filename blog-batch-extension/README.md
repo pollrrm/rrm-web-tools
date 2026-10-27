@@ -12,7 +12,8 @@ either of them.
 
 Drop the monthly ZIP (one `.docx` + one image per post — typically 4 or 5, one per Monday) into the side panel and it:
 
-1. Unzips, pairs each `.docx` with its image, and parses all posts at once.
+1. Unzips, pairs each `.docx` with its image, **optimizes each image** (see
+   below), and parses all posts at once.
 2. Runs the same **Quality Check** as the DOCX Batch web tool on every post —
    Format & Accessibility, Consistency, Structure & Pattern, and Content Parity
    vs the source `.docx` — plus parse/pairing flags: missing title / SEO title /
@@ -30,8 +31,51 @@ Drop the monthly ZIP (one `.docx` + one image per post — typically 4 or 5, one
 
 A single `.docx` also works as a one-post batch.
 
-Featured-image upload is **not** included (still set manually in WP), and it does
-**not** use the WordPress REST API.
+In the walk-through, the featured image is still set manually in WP. On sites set
+up for the API (below), **Send all** uploads it too.
+
+### Image optimization (built in)
+
+The **"Optimize images (85%)"** checkbox under the drop zone (ticked by default)
+runs every image through the same engine as the standalone `image-fixer-batch.html`
+tool, using its shipped defaults: **85% quality, original format and dimensions
+kept, no size cap, spaces → dashes in filenames**. It happens in the panel
+(canvas, no network) before the image is uploaded, so the WordPress media library
+stays lean — no separate optimize-then-reupload step. If an image is already
+small enough that re-encoding wouldn't shrink it, or fails to decode, the original
+is kept untouched. A one-line summary (e.g. *"Optimized 4 of 4 images — 3.4 MB →
+0.5 MB (85% smaller)"*) shows after each drop. Untick the box to skip optimization
+(e.g. when the ZIP is already optimized).
+
+---
+
+## Send all via the WordPress API
+
+On sites marked `api: true` in `SITES` (now **all four**: RRM, RRM@home, SCMM, and
+Hospice Haven), the panel shows a **Send all to WordPress** box above the posts:
+
+1. Pick **Scheduled** (default) or **Draft**.
+2. Keep any post page on that site open as the active tab (it uses your login).
+3. Click **Send N posts**. Each pending post is created with its featured image,
+   both categories (e.g. Funeral + Funeral → Blogs), author *Welton Hong*, the
+   4:00 AM date, Yoast SEO Title, Meta Description and Primary Category. The
+   featured image is also copied into Yoast's **Social image** and **X image** so
+   shared links show the image on X / Facebook / LinkedIn (Yoast Free doesn't
+   reliably fall back to the featured image on its own).
+
+Safety rules (in `content-api.js`):
+- Every post is created as a Draft first and only switched to Scheduled if
+  WordPress confirms the date is in the future. A past date stays Draft.
+- A post whose exact title already exists in WordPress is reported, not re-created,
+  so sending twice is safe.
+- Sent, skipped and editor-filled posts are never re-sent; failed ones can be retried.
+
+**Per-site setup before adding `api: true`:** install the Yoast REST snippet
+(`rrm-yoast-rest-snippet.txt` — registers the SEO title, meta description,
+primary category, and the Social/X image keys for REST) via Code
+Snippets / WPCode / mu-plugins (**not** HFCM, which can't run PHP), then run the
+console draft test on that site. Requests use `/index.php?rest_route=` because
+rrmathome.com returns an empty response on `/wp-json/`.
 
 ---
 
@@ -71,9 +115,10 @@ blog-batch-extension/
   manifest.json     MV3; storage + sidePanel + tabs; content script on the 4 sites' post pages
   background.js     opens the side panel on toolbar-icon click
   sidepanel.html    panel UI
-  sidepanel.js      ZIP unzip + pair + parse + queue + walk-through
+  sidepanel.js      ZIP unzip + pair + image optimize + parse + queue + walk-through
   content-wp.js     WordPress Classic Editor filler (copied from RRM Blog Helper,
                     message type RRM_BATCH_FILL_POST so it can't collide)
+  content-api.js    REST API sender for "Send all" (message RRM_BATCH_API_CREATE)
   vendor/           jszip.min.js, mammoth.browser.min.js
 ```
 

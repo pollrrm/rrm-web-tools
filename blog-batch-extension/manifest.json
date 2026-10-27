@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RRM Blog Batch Helper",
-  "version": "0.1.0",
-  "description": "Drop one monthly ZIP (a .docx + image per post — however many Mondays that month) and fill every WordPress Classic Editor blog post in a guided, resumable walk-through. Independent of the RRM Blog Helper and RRM WP Helper extensions.",
+  "version": "0.4.0",
+  "description": "Drop one monthly ZIP (a .docx + image per post — however many Mondays that month); it optimizes the images (85%), then fills every WordPress Classic Editor blog post in a guided, resumable walk-through, or sends them all at once through the WordPress REST API on sites set up for it. Independent of the RRM Blog Helper and RRM WP Helper extensions.",
   "permissions": ["storage", "sidePanel", "tabs"],
   "host_permissions": [
     "https://www.rrmathome.com/*",
@@ -55,7 +55,7 @@
         "https://www.hospicehavenmarketing.com/wp-admin/post.php*",
         "https://hospicehavenmarketing.com/wp-admin/post.php*"
       ],
-      "js": ["content-wp.js"],
+      "js": ["content-wp.js", "content-api.js"],
       "run_at": "document_idle"
     }
   ]
