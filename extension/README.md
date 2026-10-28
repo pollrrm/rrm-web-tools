@@ -1,17 +1,18 @@
 # RRM WP Helper (Chrome / Edge Extension)
 
-Bridges the [YT Thumbnail Downloader](../yt-thumbnail-downloader.html) and the WordPress Classic Editor on RRM niche sites. Click **Send to RRM@home** on a video card → a new tab opens at the WP new-post page → title, content, SEO meta description, ACF YouTube ID, and the Videos category are prefilled, ready for review and publish.
+Fills WordPress Classic Editor **New Post** pages for video posts on the RRM niche sites, from the video-posting task email.
 
-Currently supports: **rrmathome.com** (Classic Editor + Yoast SEO + ACF).
+Supports: **rrmathome.com** (Home Improvement), **seniorcaremarketingmax.com** (Home Care), **ringringmarketing.com** (Funeral Homes → `Funeral > Videos`), **hospicehavenmarketing.com** (Hospice). All use Classic Editor + Yoast SEO + ACF.
 
 ---
 
 ## How it works
 
-- **`content-tool.js`** runs on `pollrrm.github.io`. It listens for a `postMessage` from the tool, stashes the post payload in `chrome.storage.local`, and opens the WP new-post page in a new tab.
-- **`content-wp.js`** runs on `rrmathome.com/wp-admin/post-new.php`. It reads the payload, waits for the editor to be ready, and fills the form via DOM manipulation (TinyMCE API for the body content).
+- **`sidepanel.js`** (main flow) — paste the email in the side panel, Extract, then **Fill This Post** on the open New Post page. After the fill it uploads the YouTube thumbnail to the Media Library and sets it as the featured image (runs in the WP tab using WordPress's own upload nonce and your login — no passwords).
+- **`content-tool.js`** runs on `pollrrm.github.io`. The YT Thumbnail Downloader's **Send to ...** buttons post a payload; this stashes it and opens the target site's new-post page. (This path does not set the featured image.)
+- **`content-wp.js`** runs on the WP post editor. It leaves WPBakery Backend Editor if needed, switches to the Text view, and fills title, publish date, content, author, Yoast meta description, categories, and the ACF YouTube ID, with a step-by-step progress panel.
 
-No data leaves your browser. No remote server is involved.
+No data leaves your browser except the uploads to your own WordPress sites.
 
 ---
 
@@ -36,32 +37,23 @@ No data leaves your browser. No remote server is involved.
 
 ## Using it
 
-Per video card on the YT Thumbnail Downloader:
+1. Click the extension icon to open the side panel, paste the task email, click **Extract**.
+2. Open a **New Post** page on the matching site (the niche dropdown auto-switches to it).
+3. Click **Fill This Post** and wait for **Filled ✓**. The progress panel fills: editor mode, title, publish date (email date, 5:00 AM), content, author, Yoast meta description, categories, ACF YouTube ID, featured image.
+4. Review, then **Publish** (or save as draft).
 
-1. Click **Download Thumbnail** to save the thumbnail locally (per the SOP).
-2. Click **Send to RRM@home**. A new tab opens at `rrmathome.com/wp-admin/post-new.php`.
-3. Wait ~1 second. You'll see fields populate:
-   - **Title** — from the email
-   - **Content** — paragraphs in the Visual editor
-   - **Yoast Meta Description** — single-paragraph version with proper spacing
-   - **ACF YouTube ID** (`youtube_id`) — the 11-char ID
-   - **Videos category** — checked
-   - **Author** — set to *Welton Hong* (only if the Author meta box is enabled in Screen Options)
-4. Set the **Featured Image** by uploading the downloaded thumbnail.
-5. Set the **Publish Date** to the email's date at **5:00 AM** per the SOP.
-6. **Publish** (or save as draft for review).
+### Featured image safeguards
+
+- If the post already has a featured image, it is left alone (a second Fill on the same post won't upload again).
+- Uploaded attachment IDs are remembered per site + video. Filling the same video again reuses that upload, after checking it still exists in the Media Library, instead of adding a duplicate.
+- If the step fails, use **Download Thumbnail** and upload it by hand.
 
 ---
 
-## What it doesn't do (yet)
+## What it doesn't do
 
-- **Featured image upload** — manual for now. Future: auto-fetch the YT thumbnail server-side and set as featured image.
-- **Other niche sites** — only rrmathome.com is wired up. To add another (e.g., ringringmarketing.com, seniorcaremarketingmax.com, hospice site), update:
-  - `manifest.json` → add the new domain to `host_permissions` and `content_scripts`
-  - `content-tool.js` → add the new entry to `TARGET_URLS`
-  - `content-wp.js` → adjust the category lookup, ACF field name, etc., if the target site differs
-  - `yt-thumbnail-downloader.html` → add a per-industry button or a target dropdown
-- **Scheduled publish date** — the SOP requires 5:00 AM on the email's date. Currently you set this manually in the editor.
+- **Publish** — always reviewed and published by hand.
+- **Featured image from the YT tool's Send buttons** — only the side panel flow sets it.
 
 ---
 

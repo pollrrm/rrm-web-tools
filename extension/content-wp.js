@@ -23,6 +23,29 @@
   await fillPost(rrm_pending.payload);
 })();
 
+// ---- Featured image hand-off (side panel flow) ----
+// The thumbnail upload runs from the side panel (it needs the page's own
+// upload nonce, which only the MAIN world can read). fillPost leaves its
+// "Featured image" step running and parks the progress UI here; the side panel
+// reports the outcome via RRM_FEATURED_STATUS, which closes the step out.
+let pendingFeaturedUi = null;
+let pendingFeaturedTimer = null;
+
+function finishFeaturedStep(status, detail) {
+  if (!pendingFeaturedUi) return;
+  clearTimeout(pendingFeaturedTimer);
+  const ui = pendingFeaturedUi;
+  pendingFeaturedUi = null;
+  ui.update('featured', status, detail);
+  ui.finish(ui.allDone());
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'RRM_FEATURED_STATUS') return;
+  finishFeaturedStep(msg.status, msg.detail);
+  sendResponse({ ok: true });
+});
+
 // ---- Entry point 2: message-based (side panel flow) ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'RRM_FILL_POST' || !msg.payload) return;
@@ -56,12 +79,14 @@ async function fillPost(p) {
 
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
+  ui.addStep('editor', 'Editor mode');
   if (p.publishDate) ui.addStep('date',    `Publish: ${formatPublishLabel(p.publishDate)}`);
   if (p.content)     ui.addStep('content', 'Content');
   if (p.author)      ui.addStep('author',  'Author');
   if (p.metaDesc)    ui.addStep('meta',    'Meta description (Yoast)');
   ui.addStep('category', categoryStepLabel);
   if (p.ytId)        ui.addStep('acf',     'YouTube ID (ACF)');
+  if (p.featuredImage) ui.addStep('featured', 'Featured image');
 
   try {
     ui.update('title', 'running', 'waiting for editor');
@@ -82,6 +107,23 @@ async function fillPost(p) {
     ui.update('title', 'skipped');
   }
 
+  // 1a. Editor mode — make sure the body editor is fillable. On the WPBakery
+  // niches a New Post can open straight into the Backend Editor; we click
+  // "Classic Mode" to leave it, then flip to the Text view so the #content
+  // textarea is authoritative (this also removes the TinyMCE-clobber race). The
+  // step verifies #content is really visible afterward; if it isn't, it fails
+  // loudly so the user can switch modes and Fill again.
+  ui.update('editor', 'running');
+  const editorState = await ensureFillableEditor();
+  if (editorState.ok) {
+    ui.update('editor', 'done',
+      editorState.leftWpbakery ? 'left WPBakery → Text'
+      : editorState.switched   ? 'switched to Text'
+                               : 'Text view');
+  } else {
+    ui.update('editor', 'failed', 'switch to Classic Mode → Text, then Fill again');
+  }
+
   // 1b. Publish Date (instant — Classic Editor's date controls are always present)
   if (p.publishDate) {
     ui.update('date', 'running');
@@ -97,7 +139,11 @@ async function fillPost(p) {
   // the textarea with TinyMCE's empty state and wipe our content.
   // Also kick off a background sync for the case where TinyMCE mounts later.
   let contentHtmlForReinforcement = null;
-  if (p.content) {
+  if (p.content && !editorState.ok) {
+    // Editor isn't in a fillable state (e.g. still in WPBakery Backend Editor).
+    // Writing #content now would be re-serialized away on save — skip and flag.
+    ui.update('content', 'failed', 'switch to Classic Mode → Text, then Fill again');
+  } else if (p.content) {
     ui.update('content', 'running');
     const html = toHtml(p.content);
     contentHtmlForReinforcement = html;
@@ -175,8 +221,18 @@ async function fillPost(p) {
       acfFilled ? null : 'ACF field did not appear');
   }
 
-  const allOk = ui.allDone();
-  ui.finish(allOk);
+  if (p.featuredImage) {
+    // The side panel uploads the thumbnail once this fill returns and reports
+    // back via RRM_FEATURED_STATUS. Park the UI until then; if no report
+    // arrives (panel closed mid-fill), close the step out on our own.
+    ui.update('featured', 'running', 'uploading thumbnail');
+    pendingFeaturedUi = ui;
+    clearTimeout(pendingFeaturedTimer);
+    pendingFeaturedTimer = setTimeout(
+      () => finishFeaturedStep('failed', 'no response — use Download Thumbnail'), 45000);
+  } else {
+    ui.finish(ui.allDone());
+  }
 
   // After all critical steps are done (especially ACF), reinforce content in
   // the background. This protects against late TinyMCE re-syncs or WP
@@ -359,6 +415,76 @@ async function waitForAcfReady(timeoutMs = 5000) {
     await new Promise(r => setTimeout(r, 100));
   }
   return false;
+}
+
+// Finds the WPBakery "Classic Mode" toggle. It's only present when the Backend
+// (or Frontend) Editor is the active view — clicking it hands control back to the
+// Classic Editor. We match on the visible TEXT rather than the class, because the
+// stock class name (wpb_switch-to-composer) is both counter-intuitive and
+// reskinned by the theme (Betheme renders these as a pill control). This is the
+// exact button the team clicks by hand today.
+function findWpbClassicModeButton() {
+  const candidates = document.querySelectorAll('a, button, input[type="button"]');
+  for (const el of candidates) {
+    const txt = (el.textContent || el.value || '').trim().toLowerCase();
+    if (txt === 'classic mode' && el.offsetParent !== null) return el;
+  }
+  return null;
+}
+
+// Ensures the WordPress body editor is in a state we can fill: the Classic
+// Editor's Text (HTML) view, where #content is the source of truth.
+//
+// On the WPBakery niches a New Post can open straight into the Backend Editor
+// (URL ...post-new.php?wpb-backend-editor). In that view WPBakery owns #content
+// and re-serializes it from its own blocks on save — so writing our HTML there
+// gets wiped. We therefore reproduce the manual sequence: click "Classic Mode",
+// then switch to the Text tab.
+//
+// Crucially we VERIFY the result: the #content textarea must end up actually
+// visible. If it doesn't (unexpected button, Gutenberg, a WPBakery view we
+// couldn't leave), we return { ok: false } so the caller warns the user instead
+// of writing content that won't stick.
+//
+// Returns { ok, switched, leftWpbakery, mode }.
+async function ensureFillableEditor() {
+  // 1. Leave WPBakery's Backend/Frontend Editor if it's active.
+  let leftWpbakery = false;
+  const classicBtn = findWpbClassicModeButton();
+  if (classicBtn) {
+    classicBtn.click();
+    leftWpbakery = true;
+    // Wait for the Classic Editor's content area to come back (TinyMCE iframe or
+    // a visible textarea).
+    await waitFor(
+      () => document.getElementById('content_ifr') ||
+            (document.getElementById('content') || {}).offsetParent != null,
+      { timeout: 4000 }
+    ).catch(() => {});
+  }
+
+  // 2. Switch the Classic Editor to the Text (HTML) view.
+  const wrap = document.getElementById('wp-content-wrap');
+  const textTab = document.getElementById('content-html');
+  let switched = false;
+  if (wrap && textTab && wrap.classList.contains('tmce-active')) {
+    textTab.click();
+    switched = true;
+    await waitFor(
+      () => document.getElementById('wp-content-wrap')?.classList.contains('html-active'),
+      { timeout: 3000 }
+    ).catch(() => {});
+  }
+
+  // 3. Verify #content is now genuinely fillable (present AND visible).
+  const ta = document.getElementById('content');
+  const fillable = !!(ta && ta.offsetParent !== null);
+  return {
+    ok: fillable,
+    switched,
+    leftWpbakery,
+    mode: fillable ? (leftWpbakery ? 'left-wpbakery-then-text' : 'classic-text') : 'unfillable'
+  };
 }
 
 // Sets the WordPress Classic Editor publish date via the standard meta-box

@@ -326,11 +326,11 @@
   <div class="notes-body">
 
     <h4>What this does</h4>
-    <p>Reads the video-posting email you paste, extracts each video's title, content, YouTube ID, meta description, and thumbnail, then fills a WordPress <strong>New Post</strong> page for you — title, body, Yoast meta description, ACF YouTube ID, category, and author. It does <strong>not</strong> upload the thumbnail or hit Publish; you finish those by hand.</p>
+    <p>Reads the video-posting email you paste, extracts each video's title, content, YouTube ID, meta description, and thumbnail, then fills a WordPress <strong>New Post</strong> page for you — title, publish date, body, Yoast meta description, ACF YouTube ID, category, author, and the <strong>featured image</strong> (it uploads the YouTube thumbnail for you). It does <strong>not</strong> hit Publish; you review and finish by hand.</p>
 
     <h4>Before you click Fill</h4>
     <ol>
-      <li><span class="warn-chip">Important</span> Set the WP body editor to <strong>Code</strong>, not <strong>Visual</strong>. The content fills into the Code/Text view.</li>
+      <li>The extension handles the editor for you: if a post opens in <strong>WPBakery Backend Editor</strong> it clicks <strong>Classic Mode</strong>, then switches to the <strong>Text</strong> view before filling. <span class="warn-chip">WPBakery</span> If the progress panel's <strong>Editor mode</strong> step shows a warning, switch to Classic Mode → Text by hand and Fill again.</li>
       <li>Make sure the pasted email includes the <strong>Niche</strong> label (e.g. <em>Funeral Homes</em>, <em>Home Improvement</em>, <em>Home Care</em>) so it lands under the right site — only the selected niche's videos show up.</li>
       <li>Pick the matching <strong>Niche</strong> in the dropdown above (it auto-switches to match the tab you're on).</li>
       <li>Open the <strong>New Post</strong> page on that niche's site. The status bar turns green when Fill is ready.</li>
@@ -339,18 +339,19 @@
     <h4>Step by step</h4>
     <ol>
       <li>Paste the full task email into the box below and click <strong>Extract</strong>. Copy straight from Outlook — <strong>bullets, bold and links are preserved</strong>. Check the card's formatted preview before filling.</li>
-      <li>Open a <strong>New Post</strong> page on the correct site and switch the editor to <strong>Code</strong>.</li>
+      <li>Open a <strong>New Post</strong> page on the correct site. (The extension switches the editor to <strong>Text</strong> for you when you Fill.)</li>
       <li>Click <strong>Fill This Post</strong> on the card you want.</li>
       <li><span class="warn-chip">Wait</span> Don't click or type anything until you see <strong>Filled ✓</strong> — the extension is filling several fields in sequence and interrupting it can leave fields blank.</li>
       <li><strong>Check the content</strong> — compare the filled body against the email to confirm it matches and nothing was cut off.</li>
-      <li>Click <strong>Download Thumbnail</strong>, then <strong>manually upload</strong> it as the post's Featured Image.</li>
-      <li>Set the <strong>Publish date</strong> to the email's date at <strong>5:00 AM</strong> (per SOP), then Publish or save as draft.</li>
+      <li>Check the <strong>Featured image</strong> box shows the thumbnail. If the progress panel's <strong>Featured image</strong> step failed, use <strong>Download Thumbnail</strong> and upload it by hand.</li>
+      <li>Confirm the <strong>Publish date</strong> is the email's date at <strong>5:00 AM</strong> (per SOP — filled automatically), then Publish or save as draft.</li>
     </ol>
 
     <h4>Good to know</h4>
     <ul>
       <li><strong>Formatting is preserved.</strong> Bulleted lists, bold and hyperlinks from the email carry through to the post as real <code>&lt;ul&gt;</code>, <code>&lt;strong&gt;</code> and <code>&lt;a&gt;</code> markup. <strong>Italic is intentionally dropped</strong> — these emails italicize the whole content block as a house style, so it would just wrap the entire post in <code>&lt;em&gt;</code>. The Yoast meta description is always plain text.</li>
       <li>Author is auto-set to <strong>Welton Hong</strong> (only if the Author box is enabled in Screen Options).</li>
+      <li><strong>Featured image safeguards:</strong> if the post already has a featured image, it's left alone (so filling twice won't double up). Filling the same video again on another post reuses the earlier upload instead of adding a duplicate to the Media Library.</li>
       <li>Everything runs locally in your browser — no data is sent anywhere.</li>
       <li>Funeral Homes posts get both <code>Funeral</code> and <code>Videos</code> categories; the others get <code>Videos</code>.</li>
     </ul>

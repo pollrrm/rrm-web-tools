@@ -656,7 +656,8 @@ async function fillCurrentTab(entry, btn) {
     thumbUrl: entry.thumbUrl,
     filename: entry.filename,
     categories: niche.categories || ['Videos'],
-    publishDate: parsePublishDate(entry.date)
+    publishDate: parsePublishDate(entry.date),
+    featuredImage: true // side panel uploads the thumbnail after the fill
   };
   const originalText = btn.textContent;
   btn.classList.add('busy');
@@ -664,7 +665,13 @@ async function fillCurrentTab(entry, btn) {
   btn.innerHTML = '<span class="spinner"></span>Filling…';
   try {
     const res = await chrome.tabs.sendMessage(tab.id, { type: 'RRM_FILL_POST', payload });
-    if (res && res.ok) {
+    if (res && res.ok && !(res.status && res.status.error)) {
+      btn.innerHTML = '<span class="spinner"></span>Featured image…';
+      const feat = await setFeaturedThumbnail(tab, entry);
+      try {
+        await chrome.tabs.sendMessage(tab.id,
+          { type: 'RRM_FEATURED_STATUS', status: feat.status, detail: feat.detail });
+      } catch {/* tab navigated away — nothing to report to */}
       btn.textContent = 'Filled ✓';
       setTimeout(() => {
         btn.textContent = originalText;
@@ -685,6 +692,157 @@ async function fillCurrentTab(entry, btn) {
     btn.textContent = originalText;
     refreshFillButtons();
     alert('Could not reach the WordPress page. Make sure the active tab is the New Post page on the selected niche, then try again.');
+  }
+}
+
+// ---- Featured image: YouTube thumbnail → Media Library → featured image ----
+// Same mechanism as the Marketing Guide Helper's cover upload: a script runs in
+// the WP tab's MAIN world, reads WordPress's own upload nonce, and posts to
+// async-upload.php with the logged-in session (no passwords).
+//
+// Safeguards against duplicates:
+//   1. If the post already has a featured image, leave it alone (covers a
+//      second Fill on the same post, or a featured image set by hand).
+//   2. Remember the attachment ID per site + video. Filling the same video
+//      again reuses that upload — after confirming it still exists in WP —
+//      instead of adding another copy to the Media Library.
+// Returns { status: 'done'|'skipped'|'failed', detail } for the progress panel.
+async function setFeaturedThumbnail(tab, entry) {
+  const run = async (func, args) => {
+    const [frame] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, world: 'MAIN', func, args
+    });
+    return frame && frame.result;
+  };
+
+  try {
+    const host = new URL(tab.url).hostname.replace(/^www\./, '');
+    const key = `rrm_thumb:${host}:${entry.id}`;
+    const stored = (await chrome.storage.local.get(key))[key];
+    const reuseId = stored && stored.id ? stored.id : null;
+
+    const probe = await run(rrmFeaturedProbe, [reuseId]);
+    if (!probe || !probe.ok) {
+      return { status: 'failed', detail: (probe && probe.error) || 'could not read the editor' };
+    }
+    if (probe.alreadySet) {
+      return { status: 'skipped', detail: 'post already has one — left as is' };
+    }
+
+    if (reuseId && probe.reuseValid) {
+      const r = await run(rrmSetFeatured, [reuseId]);
+      if (r && r.ok) return { status: 'done', detail: `reused existing upload #${reuseId}` };
+    }
+
+    const dataUrl = await fetchThumbDataUrl(entry.thumbUrl);
+    const up = await run(rrmUploadAndSetFeatured, [dataUrl, entry.filename]);
+    if (!up || !up.ok) {
+      return { status: 'failed', detail: (up && up.error) || 'upload failed' };
+    }
+    await chrome.storage.local.set({ [key]: { id: up.id, ts: Date.now() } });
+    return up.featuredSet
+      ? { status: 'done', detail: `uploaded #${up.id}` }
+      : { status: 'failed', detail: `uploaded #${up.id} — set it as featured by hand` };
+  } catch (e) {
+    console.warn('[RRM Helper] Featured image failed:', e);
+    return { status: 'failed', detail: 'error — use Download Thumbnail' };
+  }
+}
+
+async function fetchThumbDataUrl(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`thumbnail download failed (HTTP ${res.status})`);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
+// The three functions below run in the WP tab's MAIN world. They are
+// serialized by chrome.scripting, so each must be fully self-contained.
+
+// Reports whether the post already has a featured image, and whether a
+// previously uploaded attachment (reuseId) still exists in the Media Library.
+async function rrmFeaturedProbe(reuseId) {
+  try {
+    const tid = document.getElementById('_thumbnail_id');
+    const current = tid ? parseInt(tid.value, 10) : NaN;
+    const alreadySet = Number.isFinite(current) && current > 0;
+
+    let reuseValid = false;
+    if (reuseId && !alreadySet && window.wp && wp.media && wp.media.attachment) {
+      reuseValid = await new Promise((resolve) => {
+        const t = setTimeout(() => resolve(false), 6000);
+        try {
+          wp.media.attachment(reuseId).fetch()
+            .done(() => { clearTimeout(t); resolve(true); })
+            .fail(() => { clearTimeout(t); resolve(false); });
+        } catch (e) { clearTimeout(t); resolve(false); }
+      });
+    }
+    return { ok: true, alreadySet, reuseValid };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+async function rrmSetFeatured(id) {
+  try {
+    if (window.wp && wp.media && wp.media.featuredImage &&
+        typeof wp.media.featuredImage.set === 'function') {
+      wp.media.featuredImage.set(id);
+      return { ok: true };
+    }
+    const tid = document.getElementById('_thumbnail_id');
+    if (tid) { tid.value = String(id); return { ok: true }; }
+    return { ok: false };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+async function rrmUploadAndSetFeatured(dataUrl, filename) {
+  try {
+    const s = window._wpPluploadSettings;
+    if (!s || !s.defaults || !s.defaults.multipart_params) {
+      return { ok: false, error: 'WP media uploader not ready on this page' };
+    }
+    const uploadUrl = s.defaults.url || window.ajaxurl;
+    const params = Object.assign({}, s.defaults.multipart_params);
+    if (!params.action) params.action = 'upload-attachment';
+
+    const blob = await (await fetch(dataUrl)).blob();
+    const fd = new FormData();
+    for (const k in params) fd.append(k, params[k]);
+    fd.append('name', filename);
+    fd.append('async-upload', blob, filename);
+
+    const resp = await fetch(uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (e) { return { ok: false, error: `upload returned HTTP ${resp.status} — still logged in?` }; }
+    if (!json || !json.success || !json.data || !json.data.id) {
+      const d = json && json.data;
+      return { ok: false, error: `upload rejected: ${(d && (d.message || JSON.stringify(d))) || 'unknown error'}` };
+    }
+    const id = json.data.id;
+
+    let featuredSet = false;
+    if (window.wp && wp.media && wp.media.featuredImage &&
+        typeof wp.media.featuredImage.set === 'function') {
+      try { wp.media.featuredImage.set(id); featuredSet = true; } catch (e) {}
+    }
+    if (!featuredSet) {
+      const tid = document.getElementById('_thumbnail_id');
+      if (tid) { tid.value = String(id); featuredSet = true; }
+    }
+    return { ok: true, id, featuredSet };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
   }
 }
 
