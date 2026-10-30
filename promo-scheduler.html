@@ -18,12 +18,14 @@
     --bg: #0f1115; --panel: #181b22; --panel-2: #1c1f27; --border: #262a33; --border-strong: #2a2f3a;
     --text: #e6e6e6; --text-muted: #b8bdc8; --text-dim: #8a93a3;
     --accent: #5b8def; --accent-hover: #4a7ce0; --ok: #6cd17b; --error: #ff7a8a; --purple: #c8a8ff;
+    --accent-solid: #3f6fd6; --accent-solid-hover: #3461c4;
     --secondary: #2a2f3a; --secondary-hover: #353b48; --input-bg: #0f1115; --shadow: 0 1px 3px rgba(0,0,0,.4);
   }
   :root[data-theme="light"] {
     --bg: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6; --border: #e1e4ea; --border-strong: #cbd0d8;
     --text: #1a1d24; --text-muted: #475569; --text-dim: #64748b;
     --accent: #2563eb; --accent-hover: #1d4ed8; --ok: #15803d; --error: #b91c1c; --purple: #6d28d9;
+    --accent-solid: #2563eb; --accent-solid-hover: #1d4ed8;
     --secondary: #e2e8f0; --secondary-hover: #cbd5e1; --input-bg: #ffffff; --shadow: 0 1px 3px rgba(0,0,0,.08);
   }
   .theme-toggle {
@@ -39,24 +41,49 @@
   :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
 
   * { box-sizing: border-box; }
+  ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  html { scrollbar-color: var(--border-strong) transparent; }
   body {
-    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 30px auto;
-    padding: 0 20px 60px; background: var(--bg); color: var(--text); line-height: 1.5;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 820px; margin: 30px auto;
+    padding: 0 20px 72px; background: var(--bg); color: var(--text); line-height: 1.5;
     transition: background .15s, color .15s;
   }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .subtitle { color: var(--text-dim); margin: 0 0 24px; font-size: 13px; }
+  h1 { font-size: 23px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-dim); margin: 0 0 22px; font-size: 13.5px; max-width: 64ch; }
   .back-link {
     display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); text-decoration: none;
     font-size: 12px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
     margin-bottom: 14px; transition: color .15s, border-color .15s;
   }
   .back-link:hover { color: var(--text); border-color: var(--accent); }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; }
-  .card h2 {
-    font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin: 0 0 14px;
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+
+  /* ---- Stepped flow ---- */
+  #flow {
+    counter-reset: step; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 4px 24px; box-shadow: var(--shadow);
   }
+  .step {
+    counter-increment: step; display: grid; grid-template-columns: 34px 1fr; gap: 18px;
+    padding: 26px 0; border-top: 1px solid var(--border);
+  }
+  .step:first-of-type { border-top: 0; }
+  .step[hidden] { display: none; }
+  .step-num {
+    width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; line-height: 1;
+    font-size: 15px; font-weight: 700; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .step-num::before { content: counter(step); }
+  .step-body { min-width: 0; }
+  .step-title { font-size: 16px; font-weight: 700; margin: 5px 0 3px; color: var(--text); }
+  .step-desc { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; }
+  @media (max-width: 560px) {
+    #flow { padding: 2px 16px; }
+    .step { grid-template-columns: 28px 1fr; gap: 12px; }
+    .step-num { width: 28px; height: 28px; font-size: 13px; }
+  }
+
   label { display: block; font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; font-weight: 600; }
   label:first-of-type { margin-top: 0; }
   label .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
@@ -65,6 +92,66 @@
     border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit;
   }
   textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .field-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
+  .field-note strong { color: var(--text-muted); }
+
+  /* ---- Step 1: choose what you're making ---- */
+  .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .choice { grid-template-columns: 1fr; } }
+  .seg {
+    position: relative; text-align: left; cursor: pointer; background: var(--input-bg); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 9px; padding: 14px 16px 14px 42px;
+    font-size: 14.5px; font-weight: 700; font-family: inherit; transition: border-color .15s, background .15s;
+  }
+  .seg span { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--text-dim); line-height: 1.45; }
+  .seg::before {
+    content: ""; position: absolute; left: 16px; top: 17px; width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border-strong); transition: border-color .15s, background .15s;
+  }
+  .seg:hover { border-color: var(--accent); }
+  .seg.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .seg.active span { color: var(--text-muted); }
+  .seg.active::before { border-color: var(--accent); background: radial-gradient(circle at center, var(--accent) 0 4px, transparent 5px); }
+
+  /* ---- Buttons ---- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: var(--secondary);
+    color: var(--text); border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+    font-family: inherit; transition: background .15s;
+  }
+  .btn:hover { background: var(--secondary-hover); }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 5px; background: var(--accent-solid); color: #fff; padding: 6px 14px;
+    font-size: 12px; border: 0; border-radius: 5px; cursor: pointer; font-weight: 700; font-family: inherit;
+    transition: background .15s;
+  }
+  .copy-btn:hover { background: var(--accent-solid-hover); }
+  .copy-btn.copied { background: var(--ok); color: #06210d; }
+
+  /* ---- Output step ---- */
+  .opt { margin: 0; }
+  .opt-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 9px; }
+  .opt-h .opt-t { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .opt-sub { font-size: 13.5px; font-weight: 700; color: var(--text-muted); margin: 18px 0 8px; }
+  pre {
+    margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-word; background: var(--input-bg);
+    border: 1px solid var(--border-strong); border-radius: 6px; overflow-x: auto;
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: var(--text);
+  }
+  .or-div {
+    display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .1em; font-weight: 700; margin: 24px 0;
+  }
+  .or-div::before, .or-div::after { content: ""; height: 1px; background: var(--border); flex: 1; }
+  .callout {
+    font-size: 12.5px; line-height: 1.6; color: var(--text-muted); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; margin-top: 12px;
+  }
+  .callout strong { color: var(--text); }
+  .callout code { background: var(--input-bg); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
 
   /* WYSIWYG content editor */
   .wysiwyg { border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--input-bg); }
@@ -80,160 +167,191 @@
   .weditor p { margin: .5em 0; } .weditor ul, .weditor ol { padding-left: 22px; margin: .5em 0; }
   .weditor a { color: var(--accent); }
   .whtml { min-height: 150px; border: 0; border-radius: 0; }
-  input:focus, select:focus { outline: none; border-color: var(--accent); }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
-  .field-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
-  .field-note strong { color: var(--text-muted); }
 
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: var(--secondary);
-    color: var(--text); border: none; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600;
-    font-family: inherit; transition: background .15s;
-  }
-  .btn:hover { background: var(--secondary-hover); }
-  .copy-btn {
-    background: var(--secondary); color: var(--text-muted); padding: 4px 12px; font-size: 11px; border: 0;
-    border-radius: 4px; cursor: pointer; font-weight: 600;
-  }
-  .copy-btn:hover { background: var(--secondary-hover); color: var(--text); }
-  .copy-btn.copied { background: var(--ok); color: #06210d; }
-  pre {
-    margin: 0; padding: 12px; white-space: pre-wrap; word-break: break-word; background: var(--input-bg);
-    border: 1px solid var(--border-strong); border-radius: 6px; overflow-x: auto;
-    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: var(--text);
-  }
-  .clockline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  /* Schedule status + clock */
+  .clockline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
   .clock { font-size: 12px; color: var(--text-dim); }
   .clock strong { color: var(--accent); }
-  .status { font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: 6px; margin-top: 12px; border: 1px solid var(--border-strong); }
+  .status { font-size: 13px; font-weight: 600; padding: 9px 12px; border-radius: 6px; margin-top: 12px; border: 1px solid var(--border-strong); }
   .status.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: color-mix(in srgb, var(--ok) 10%, transparent); }
   .status.off { color: var(--text-muted); }
-  details { margin-top: 6px; }
-  details summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
-  details ol, details ul { color: var(--text-muted); font-size: 13px; line-height: 1.7; padding-left: 20px; }
-  details code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  details.help { margin: 18px 0 0; }
+  details.help summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+  details.help ul { color: var(--text-muted); font-size: 13px; line-height: 1.7; padding-left: 20px; margin: 10px 0 0; }
+  details.help code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>
 </head>
 <body>
 
 <a class="back-link" href="./index.html">&larr; All Tools</a>
 <h1>Promo Scheduler</h1>
-<p class="subtitle">Show content only during a date/time window &mdash; no plugin. Paste what you want scheduled (e.g. a holiday-hours notice) and get a <strong>ready-to-paste block</strong> that shows and hides itself &mdash; or just grab a <strong>CSS class</strong> to put on an element you already have. Any site, any timezone.</p>
+<p class="subtitle">Show content only during a date window, or show a placeholder whenever nothing's running. No plugin; works on any site, in any timezone. Follow the steps and copy the code at the end.</p>
 
-<div class="card">
-  <h2>Settings</h2>
-  <div class="row">
-    <div>
-      <label>Client's state <span class="hint">(sets the timezone)</span></label>
-      <select id="state"><option value="">— Select state —</option></select>
-    </div>
-    <div>
-      <label>Timezone <span class="hint">(auto-set from state; change if needed)</span></label>
-      <select id="tz">
-        <optgroup label="United States">
-          <option value="America/New_York">Eastern — New York</option>
-          <option value="America/Chicago">Central — Chicago</option>
-          <option value="America/Denver">Mountain — Denver</option>
-          <option value="America/Phoenix">Mountain — Arizona (no DST)</option>
-          <option value="America/Los_Angeles">Pacific — Los Angeles</option>
-          <option value="America/Anchorage">Alaska</option>
-          <option value="Pacific/Honolulu">Hawaii (no DST)</option>
-          <option value="America/Puerto_Rico">Atlantic — Puerto Rico (no DST)</option>
-        </optgroup>
-        <optgroup label="Other">
-          <option value="">Visitor's local time (each device)</option>
-          <option value="UTC">UTC</option>
-          <option value="Europe/London">London</option>
-          <option value="Asia/Manila">Manila</option>
-          <option value="Australia/Sydney">Sydney</option>
-        </optgroup>
-      </select>
-    </div>
-  </div>
-  <p class="field-note" id="stateNote" style="color: var(--purple);"></p>
-  <label>CSS class name <span class="hint">(marker; keep it unique per site)</span></label>
-  <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
-  <p class="field-note">From the client's listed address, pick the <strong>state</strong> and the timezone is set for you (Arizona &amp; Hawaii skip daylight saving automatically). A few states span two zones — a note appears so you can adjust. Or choose <strong>Visitor's local time</strong> to run in each viewer's own timezone.</p>
-</div>
+<div id="flow">
 
-<div class="card">
-  <h2>Schedule window</h2>
-  <label>Start <span class="hint">(blank = show from the beginning)</span></label>
-  <input type="text" id="f_start" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 00:00:00">
-  <label>End <span class="hint">(blank = never ends)</span></label>
-  <input type="text" id="f_end" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 23:59:59">
-  <p class="field-note">Format: <strong>MM/DD/YYYY hh:mm:ss</strong> (24-hour; am/pm and seconds optional; date only = whole day). Keep the times at 00:00:00 &rarr; 23:59:59 for whole-day scheduling &mdash; just change the dates.</p>
-  <div class="clockline">
-    <span class="clock">Now in this timezone: <strong id="clock">&hellip;</strong></span>
-    <button class="btn" id="testBtn" type="button" title="Set the window to now (−2 min) through +1 hour so it's showing right away">Test: show now (1 hr)</button>
-  </div>
-  <div class="status off" id="status">&hellip;</div>
-</div>
-
-<div class="card">
-  <h2>Content to display <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--text-dim);">&mdash; optional</span></h2>
-  <div class="wysiwyg">
-    <div class="wtoolbar" id="wtoolbar">
-      <button type="button" data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
-      <button type="button" data-cmd="formatBlock" data-val="H3" title="Heading 3">H3</button>
-      <button type="button" data-cmd="formatBlock" data-val="P" title="Normal text">&para;</button>
-      <span class="wsep"></span>
-      <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
-      <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
-      <span class="wsep"></span>
-      <button type="button" data-cmd="insertUnorderedList" title="Bulleted list">&bull; List</button>
-      <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
-      <button type="button" data-cmd="createLink" title="Add link">Link</button>
-      <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
-      <button type="button" data-cmd="clear" title="Clear formatting (back to normal text)">Clear</button>
-      <button type="button" class="wtoggle" id="toggleMode" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
-    </div>
-    <div class="weditor" id="contentEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste content — e.g. a holiday-hours notice."></div>
-    <textarea class="whtml" id="contentHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
-  </div>
-  <p class="field-note">Format visually, or switch to <strong>HTML</strong> to paste/tweak code. Visual output is cleaned to semantic HTML (no inline styles) so it adopts each site's theme. Leave blank if you only want a class for an element you already have.</p>
-</div>
-
-<div class="card">
-  <h2><span>Ready-to-paste block</span> <button class="copy-btn" id="copyBlock">Copy</button></h2>
-  <pre id="blockOut">&mdash;</pre>
-  <p class="field-note">Paste this wherever you want it to appear &mdash; it shows and hides itself on schedule, nothing else to install. <em>If your site strips inline scripts from content areas, use the Advanced section instead.</em></p>
-</div>
-
-<div class="card">
-  <details>
-    <summary style="font-size:14px;">Advanced &mdash; schedule an element you already have (class + one-time snippet)</summary>
-    <div style="margin-top:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
-        <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);">CSS class &mdash; put on the element</strong>
-        <button class="copy-btn" id="copyClass">Copy</button>
+  <!-- STEP 1 -->
+  <section class="step">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">What are you making?</div>
+      <p class="step-desc">Pick one. You can switch anytime; the steps below adjust to match.</p>
+      <div class="choice" id="modeSeg">
+        <button type="button" class="seg active" data-mode="scheduled">Scheduled promo<span>Shows during the dates you set, then hides itself automatically.</span></button>
+        <button type="button" class="seg" data-mode="placeholder">Placeholder<span>Shows whenever no promo is running. Example: &ldquo;Check back for future promos.&rdquo;</span></button>
       </div>
-      <pre id="classOut">&mdash;</pre>
-      <p class="field-note">Add these to the element's <strong>class list</strong> &mdash; its <code>class="&hellip;"</code> attribute, or your page builder's CSS-class / extra-class field.</p>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 8px;">
-        <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);">One-time snippet &mdash; paste once on the page</strong>
-        <button class="copy-btn" id="copySnippet">Copy</button>
-      </div>
-      <pre id="snippetOut">&mdash;</pre>
-      <p class="field-note">Paste once anywhere on the page &mdash; a site-wide header/footer code area, or any HTML / embed / code block. It controls every element that carries the class. The ready-to-paste block already includes this, so you don't need both.</p>
+      <p class="field-note" id="modeNote"></p>
     </div>
-  </details>
-</div>
+  </section>
 
-<details style="margin: -6px 0 18px; padding: 0 4px;">
-  <summary style="font-size:13px;">How the scheduling works</summary>
-  <ul>
-    <li>Everything is hidden by default and shown only while &ldquo;now&rdquo; (in the chosen timezone) is inside its window &mdash; so nothing flashes before its time. For a holiday notice, set the <strong>End</strong> to the holiday and leave <strong>Start</strong> blank to show it from now until then.</li>
-    <li>It runs in the browser, so caching can't keep an expired item visible. Clear the cache once after publishing so the new content goes out.</li>
-    <li>You can schedule several items independently &mdash; each with its own window; overlapping windows show at the same time.</li>
-    <li>Dates are encoded in the class as <code>&lt;class&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;class&gt;E&lt;&hellip;&gt;</code>; a date-only value counts the whole day (00:00:00&ndash;23:59:59).</li>
-  </ul>
-</details>
+  <!-- STEP 2 -->
+  <section class="step">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">Client &amp; label</div>
+      <p class="step-desc">The timezone decides when &ldquo;now&rdquo; starts and ends. The label links a promo to the placeholder that should replace it.</p>
+      <div class="row">
+        <div>
+          <label>Client's state <span class="hint">(sets the timezone)</span></label>
+          <select id="state"><option value="">— Select state —</option></select>
+        </div>
+        <div>
+          <label>Timezone <span class="hint">(auto-set from state; change if needed)</span></label>
+          <select id="tz">
+            <optgroup label="United States">
+              <option value="America/New_York">Eastern — New York</option>
+              <option value="America/Chicago">Central — Chicago</option>
+              <option value="America/Denver">Mountain — Denver</option>
+              <option value="America/Phoenix">Mountain — Arizona (no DST)</option>
+              <option value="America/Los_Angeles">Pacific — Los Angeles</option>
+              <option value="America/Anchorage">Alaska</option>
+              <option value="Pacific/Honolulu">Hawaii (no DST)</option>
+              <option value="America/Puerto_Rico">Atlantic — Puerto Rico (no DST)</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="">Visitor's local time (each device)</option>
+              <option value="UTC">UTC</option>
+              <option value="Europe/London">London</option>
+              <option value="Asia/Manila">Manila</option>
+              <option value="Australia/Sydney">Sydney</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <p class="field-note" id="stateNote" style="color: var(--purple);"></p>
+      <label>Label <span class="hint">(letters/numbers only, unique per site)</span></label>
+      <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
+      <p class="field-note">A short name that links a promo to its placeholder. <strong>Use the same label for both:</strong> the placeholder watches every promo with this label and appears only when none are running. From the client's address, pick the <strong>state</strong> and the timezone fills in (Arizona &amp; Hawaii skip daylight saving). Or choose <strong>Visitor's local time</strong> to run in each viewer's own zone.</p>
+    </div>
+  </section>
+
+  <!-- STEP 3 (scheduled only) -->
+  <section class="step" id="windowCard">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">Schedule window</div>
+      <p class="step-desc">When should it show? Leave a box blank for an open end.</p>
+      <label>Start <span class="hint">(blank = show from the beginning)</span></label>
+      <input type="text" id="f_start" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 00:00:00">
+      <label>End <span class="hint">(blank = never ends)</span></label>
+      <input type="text" id="f_end" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 23:59:59">
+      <p class="field-note">Format: <strong>MM/DD/YYYY hh:mm:ss</strong> (24-hour; am/pm and seconds optional; date only = whole day). Keep the times at 00:00:00 &rarr; 23:59:59 for whole-day scheduling, then just change the dates.</p>
+      <div class="clockline">
+        <span class="clock">Now in this timezone: <strong id="clock">&hellip;</strong></span>
+        <button class="btn" id="testBtn" type="button" title="Set the window to now (−2 min) through +1 hour so it's showing right away">Test: show now (1 hr)</button>
+      </div>
+      <div class="status off" id="status">&hellip;</div>
+    </div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section class="step">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">Content to show</div>
+      <p class="step-desc" id="contentDesc">Type what should appear. Leave blank if you'll only add a label to an element you already have (Step 5, Option B).</p>
+      <div class="wysiwyg">
+        <div class="wtoolbar" id="wtoolbar">
+          <button type="button" data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
+          <button type="button" data-cmd="formatBlock" data-val="H3" title="Heading 3">H3</button>
+          <button type="button" data-cmd="formatBlock" data-val="P" title="Normal text">&para;</button>
+          <span class="wsep"></span>
+          <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
+          <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
+          <span class="wsep"></span>
+          <button type="button" data-cmd="insertUnorderedList" title="Bulleted list">&bull; List</button>
+          <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+          <button type="button" data-cmd="createLink" title="Add link">Link</button>
+          <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
+          <button type="button" data-cmd="clear" title="Clear formatting (back to normal text)">Clear</button>
+          <button type="button" class="wtoggle" id="toggleMode" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
+        </div>
+        <div class="weditor" id="contentEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste content — e.g. a holiday-hours notice."></div>
+        <textarea class="whtml" id="contentHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
+      </div>
+      <p class="field-note">Format visually, or switch to <strong>HTML</strong> to paste/tweak code. Visual output is cleaned to semantic HTML (no inline styles) so it adopts each site's theme.</p>
+    </div>
+  </section>
+
+  <!-- STEP 5 -->
+  <section class="step">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">Add it to your page</div>
+      <p class="step-desc">Pick <strong>one</strong> of the two ways below.</p>
+
+      <!-- Option A -->
+      <div class="opt">
+        <div class="opt-h">
+          <span class="opt-t">Option A: paste a ready-made block</span>
+          <button class="copy-btn" id="copyBlock" type="button">Copy</button>
+        </div>
+        <pre id="blockOut">&mdash;</pre>
+        <p class="field-note">Paste this wherever you want it to appear. It already includes the engine, so it works on its own, with nothing else to add.</p>
+      </div>
+
+      <div class="or-div">or</div>
+
+      <!-- Option B -->
+      <div class="opt">
+        <div class="opt-t" style="margin-bottom:4px;">Option B: add a label to an element you already have</div>
+        <p class="field-note" style="margin:0 0 12px;">Best when the thing you want to schedule is already on the page. Two pieces:</p>
+
+        <div class="opt-h">
+          <span class="opt-sub" style="margin:0;">1. The class (add it to your element)</span>
+          <button class="copy-btn" id="copyClass" type="button">Copy</button>
+        </div>
+        <pre id="classOut">&mdash;</pre>
+        <p class="field-note">Add this to the element's class list: its <code>class="…"</code> attribute, or your page builder's extra-class field.</p>
+
+        <div class="opt-h" style="margin-top:18px;">
+          <span class="opt-sub" style="margin:0;">2. The engine (paste once per page)</span>
+          <button class="copy-btn" id="copySnippet" type="button">Copy</button>
+        </div>
+        <pre id="snippetOut">&mdash;</pre>
+        <div class="callout" id="engineNote">
+          <strong>Each page needs this engine once.</strong> If the page already runs an older promo engine, replace that old <code>&lt;script&gt;</code> with this one, since it runs your existing promos too. Pasting it twice is harmless; it won't double-run. (Option A's block already includes it, so you don't need this piece there.)
+        </div>
+      </div>
+
+      <details class="help">
+        <summary>How the scheduling works</summary>
+        <ul>
+          <li>Everything is hidden by default and shown only while &ldquo;now&rdquo; (in the chosen timezone) is inside its window, so nothing flashes before its time.</li>
+          <li>It runs in the browser, so caching can't keep an expired item visible. Clear the cache once after publishing so the new content goes out.</li>
+          <li>You can schedule several promos independently, each with its own window; overlapping windows show at the same time.</li>
+          <li><strong>Placeholder</strong> builds a fallback (same label + <code>Else</code>) that appears only when none of that label's promos are running, filling every gap, then stepping aside when the next promo goes live.</li>
+          <li>Dates are stored in the class as <code>&lt;label&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;label&gt;E&lt;…&gt;</code>; a date-only value counts the whole day.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+</div>
 
 <script>
 function $(id){ return document.getElementById(id); }
+var mode = 'scheduled'; // 'scheduled' | 'placeholder'
 
 // Parse "MM/DD/YYYY hh:mm:ss" → YYYYMMDDHHMMSS (14) or date-only YYYYMMDD (8), or '' if invalid.
 function dtDigits(v){
@@ -253,7 +371,7 @@ function dtDigits(v){
 function padS(s){ return (s + '00000000000000').slice(0, 14); }
 function padE(s){ if (s.length >= 14) return s.slice(0, 14); if (s.length === 12) return s + '59'; if (s.length === 10) return s + '5959'; return s + '235959'; }
 
-// Sanitize the marker to a safe CSS/regex class name.
+// Sanitize the label to a safe CSS/regex class name.
 function marker(){
   var raw = ($('marker').value || '').replace(/[^A-Za-z0-9_]/g, '');
   if (!raw) raw = 'timedPromo';
@@ -276,7 +394,9 @@ function dateMDY(date){ var o = parts(date); return o.month + '/' + o.day + '/' 
 function human(digits){ return digits.length >= 14 ? digits.replace(/(....)(..)(..)(..)(..)(..)/, '$1-$2-$3 $4:$5:$6') : digits.replace(/(....)(..)(..)/, '$1-$2-$3'); }
 
 function scheduleClass(){
-  var m = marker(), s = dtDigits($('f_start').value), e = dtDigits($('f_end').value);
+  var m = marker();
+  if (mode === 'placeholder') return m + 'Else';
+  var s = dtDigits($('f_start').value), e = dtDigits($('f_end').value);
   var out = [m]; if (s) out.push(m + 'S' + s); if (e) out.push(m + 'E' + e);
   return out.join(' ');
 }
@@ -286,9 +406,10 @@ function buildSnippet(){
   var tz = $('tz').value;
   var tzArg = tz ? "timeZone:'" + tz + "'," : "";
   return '' +
-'<style>.' + m + ':not(.' + m + 'On){display:none !important;}</style>\n' +
+'<style>.' + m + ':not(.' + m + 'On),.' + m + 'Else:not(.' + m + 'ElseOn){display:none !important;}</style>\n' +
 '<script>\n' +
 '(function(){\n' +
+'  var G=window.__rrmSched||(window.__rrmSched={});if(G["' + m + '"])return;G["' + m + '"]=1;\n' +
 '  function now(){\n' +
 '    var p=new Intl.DateTimeFormat("en-CA",{' + tzArg + 'hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(new Date());\n' +
 '    var o={};for(var i=0;i<p.length;i++){o[p[i].type]=p[i].value;}\n' +
@@ -297,14 +418,17 @@ function buildSnippet(){
 '  function padS(s){return (s+"00000000000000").slice(0,14);}\n' +
 '  function padE(s){if(s.length>=14)return s.slice(0,14);if(s.length===12)return s+"59";if(s.length===10)return s+"5959";return s+"235959";}\n' +
 '  function apply(){\n' +
-'    var t=now(),els=document.querySelectorAll(".' + m + '");\n' +
+'    var t=now(),els=document.querySelectorAll(".' + m + '"),anyOn=false;\n' +
 '    for(var i=0;i<els.length;i++){\n' +
 '      var c=els[i].className;\n' +
 '      var s=(c.match(/' + m + 'S(\\d{8,14})/)||[])[1];\n' +
 '      var e=(c.match(/' + m + 'E(\\d{8,14})/)||[])[1];\n' +
 '      var show=(!s||t>=padS(s))&&(!e||t<=padE(e));\n' +
 '      els[i].classList.toggle("' + m + 'On",show);\n' +
+'      if(show)anyOn=true;\n' +
 '    }\n' +
+'    var fb=document.querySelectorAll(".' + m + 'Else");\n' +
+'    for(var j=0;j<fb.length;j++){fb[j].classList.toggle("' + m + 'ElseOn",!anyOn);}\n' +
 '  }\n' +
 '  apply();setInterval(apply,1000);\n' +
 '})();\n' +
@@ -364,7 +488,13 @@ function refresh(){
   $('classOut').textContent = scheduleClass();
   $('snippetOut').textContent = buildSnippet();
   var b = buildBlock();
-  $('blockOut').textContent = b || '(Add content above to generate a ready-to-paste block — or use the Advanced section to schedule an element you already have.)';
+  if (mode === 'placeholder') {
+    $('modeNote').textContent = 'The placeholder watches every "' + marker() + '" promo on the page and shows itself only when none are currently running: gaps between promos, before the first, and after the last. No dates needed.';
+    $('blockOut').textContent = b || '(Add the placeholder content in Step 4, e.g. "Check back for future promos", to generate a ready-to-paste block.)';
+  } else {
+    $('modeNote').textContent = '';
+    $('blockOut').textContent = b || '(Add content in Step 4 to generate a ready-to-paste block, or use Option B to schedule an element you already have.)';
+  }
   refreshStatus();
 }
 
@@ -395,6 +525,21 @@ function wireCopy(btnId, getText){
 wireCopy('copyBlock', buildBlock);
 wireCopy('copyClass', scheduleClass);
 wireCopy('copySnippet', buildSnippet);
+
+// ---- Mode: scheduled content vs. placeholder (shows when no promo is running) ----
+function setMode(m){
+  mode = m;
+  var segs = $('modeSeg').querySelectorAll('.seg');
+  for (var i = 0; i < segs.length; i++) segs[i].classList.toggle('active', segs[i].dataset.mode === m);
+  $('windowCard').hidden = (m === 'placeholder');
+  $('contentDesc').textContent = (m === 'placeholder')
+    ? 'Type the placeholder message, e.g. "Check back for future promos."'
+    : 'Type what should appear. Leave blank if you’ll only add a label to an element you already have (Step 5, Option B).';
+  refresh();
+}
+$('modeSeg').addEventListener('click', function(e){
+  var b = e.target.closest('.seg'); if (b) setMode(b.dataset.mode);
+});
 
 // Editor: prefer tags over inline styles, and <p> per line.
 try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
