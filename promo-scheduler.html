@@ -20,6 +20,7 @@
     --accent: #5b8def; --accent-hover: #4a7ce0; --ok: #6cd17b; --error: #ff7a8a; --purple: #c8a8ff;
     --accent-solid: #3f6fd6; --accent-solid-hover: #3461c4;
     --secondary: #2a2f3a; --secondary-hover: #353b48; --input-bg: #0f1115; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    color-scheme: dark;
   }
   :root[data-theme="light"] {
     --bg: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6; --border: #e1e4ea; --border-strong: #cbd0d8;
@@ -27,6 +28,7 @@
     --accent: #2563eb; --accent-hover: #1d4ed8; --ok: #15803d; --error: #b91c1c; --purple: #6d28d9;
     --accent-solid: #2563eb; --accent-solid-hover: #1d4ed8;
     --secondary: #e2e8f0; --secondary-hover: #cbd5e1; --input-bg: #ffffff; --shadow: 0 1px 3px rgba(0,0,0,.08);
+    color-scheme: light;
   }
   .theme-toggle {
     position: fixed; top: 14px; right: 14px; z-index: 1000; width: 36px; height: 36px; border-radius: 50%;
@@ -41,6 +43,7 @@
   :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
   html { scrollbar-color: var(--border-strong) transparent; }
   body {
@@ -87,12 +90,20 @@
   label { display: block; font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; font-weight: 600; }
   label:first-of-type { margin-top: 0; }
   label .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
-  input[type="text"], select, textarea {
+  input[type="text"], input[type="date"], input[type="time"], select, textarea {
     width: 100%; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border-strong);
     border-radius: 6px; color: var(--text); font-size: 14px; font-family: inherit;
   }
+  input[type="date"], input[type="time"] { min-height: 42px; }
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .7; }
+  input[type="date"]:hover::-webkit-calendar-picker-indicator,
+  input[type="time"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
   input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .inline-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; margin: 16px 0 0; }
+  .inline-check input { width: auto; min-height: 0; accent-color: var(--accent); cursor: pointer; margin: 0; }
+  .inline-check .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
   .field-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
@@ -250,12 +261,29 @@
     <div class="step-num" aria-hidden="true"></div>
     <div class="step-body">
       <div class="step-title">Schedule window</div>
-      <p class="step-desc">When should it show? Leave a box blank for an open end.</p>
-      <label>Start <span class="hint">(blank = show from the beginning)</span></label>
-      <input type="text" id="f_start" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 00:00:00">
-      <label>End <span class="hint">(blank = never ends)</span></label>
-      <input type="text" id="f_end" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="MM/DD/YYYY 23:59:59">
-      <p class="field-note">Format: <strong>MM/DD/YYYY hh:mm:ss</strong> (24-hour; am/pm and seconds optional; date only = whole day). Keep the times at 00:00:00 &rarr; 23:59:59 for whole-day scheduling, then just change the dates.</p>
+      <p class="step-desc">Pick a start and end date on the calendar. Leave a date blank for an open end.</p>
+      <div class="row">
+        <div>
+          <label>Start date <span class="hint">(blank = show from now)</span></label>
+          <input type="date" id="startDate" autocomplete="off">
+        </div>
+        <div>
+          <label>End date <span class="hint">(blank = never ends)</span></label>
+          <input type="date" id="endDate" autocomplete="off">
+        </div>
+      </div>
+      <label class="inline-check"><input type="checkbox" id="showTimes"> Set specific times <span class="hint">(otherwise it runs the whole day)</span></label>
+      <div class="row" id="timesRow" hidden style="margin-top:10px;">
+        <div>
+          <label>Start time</label>
+          <input type="time" id="startTime" step="1" value="00:00:00">
+        </div>
+        <div>
+          <label>End time</label>
+          <input type="time" id="endTime" step="1" value="23:59:59">
+        </div>
+      </div>
+      <p class="field-note">Click a field to open the calendar, or type the date. Leave a date blank for an open end: a blank <strong>start</strong> shows it from now, a blank <strong>end</strong> means it never comes down. Each promo runs the whole day unless you tick <strong>Set specific times</strong>.</p>
       <div class="clockline">
         <span class="clock">Now in this timezone: <strong id="clock">&hellip;</strong></span>
         <button class="btn" id="testBtn" type="button" title="Set the window to now (−2 min) through +1 hour so it's showing right away">Test: show now (1 hr)</button>
@@ -353,20 +381,19 @@
 function $(id){ return document.getElementById(id); }
 var mode = 'scheduled'; // 'scheduled' | 'placeholder'
 
-// Parse "MM/DD/YYYY hh:mm:ss" → YYYYMMDDHHMMSS (14) or date-only YYYYMMDD (8), or '' if invalid.
-function dtDigits(v){
-  v = String(v || '').trim();
-  if (!v) return '';
-  var m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/);
-  if (!m) return '';
-  var mo = +m[1], d = +m[2], y = +m[3];
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
-  var p2 = function(n){ return String(n).padStart(2, '0'); };
-  if (m[4] === undefined) return '' + y + p2(mo) + p2(d);
-  var hh = +m[4], mi = +m[5], ss = m[6] !== undefined ? +m[6] : 0, ap = m[7];
-  if (ap){ ap = ap.toLowerCase(); if (ap === 'pm' && hh < 12) hh += 12; if (ap === 'am' && hh === 12) hh = 0; }
-  if (hh > 23 || mi > 59 || ss > 59) return '';
-  return '' + y + p2(mo) + p2(d) + p2(hh) + p2(mi) + p2(ss);
+// Read one side of the window from its date + time inputs → YYYYMMDDHHMMSS (14), or '' if no date.
+// Date comes from a native <input type="date"> (YYYY-MM-DD); time from <input type="time"> (HH:MM[:SS]).
+function sideDigits(dateId, timeId){
+  var d = $(dateId).value; if (!d) return '';
+  var p = ($(timeId).value || '').split(':');
+  var pad = function(n){ return String(n || '0').padStart(2, '0'); };
+  return d.replace(/-/g, '') + pad(p[0]) + pad(p[1]) + pad(p[2]);
+}
+// Fill a date + time pair from a Date, read in the chosen timezone.
+function setSide(dateId, timeId, dateObj){
+  var o = parts(dateObj);
+  $(dateId).value = o.year + '-' + o.month + '-' + o.day;
+  $(timeId).value = o.hour + ':' + o.minute + ':' + o.second;
 }
 function padS(s){ return (s + '00000000000000').slice(0, 14); }
 function padE(s){ if (s.length >= 14) return s.slice(0, 14); if (s.length === 12) return s + '59'; if (s.length === 10) return s + '5959'; return s + '235959'; }
@@ -389,14 +416,12 @@ function parts(date){
   var p = new Intl.DateTimeFormat('en-CA', tzOpts({ hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })).formatToParts(date);
   var o = {}; p.forEach(function(x){ o[x.type] = x.value; }); return o;
 }
-function fieldValue(date){ var o = parts(date); return o.month + '/' + o.day + '/' + o.year + ' ' + o.hour + ':' + o.minute + ':' + o.second; }
-function dateMDY(date){ var o = parts(date); return o.month + '/' + o.day + '/' + o.year; }
 function human(digits){ return digits.length >= 14 ? digits.replace(/(....)(..)(..)(..)(..)(..)/, '$1-$2-$3 $4:$5:$6') : digits.replace(/(....)(..)(..)/, '$1-$2-$3'); }
 
 function scheduleClass(){
   var m = marker();
   if (mode === 'placeholder') return m + 'Else';
-  var s = dtDigits($('f_start').value), e = dtDigits($('f_end').value);
+  var s = sideDigits('startDate', 'startTime'), e = sideDigits('endDate', 'endTime');
   var out = [m]; if (s) out.push(m + 'S' + s); if (e) out.push(m + 'E' + e);
   return out.join(' ');
 }
@@ -436,12 +461,8 @@ function buildSnippet(){
 }
 
 function refreshStatus(){
-  var s = dtDigits($('f_start').value), e = dtDigits($('f_end').value), now = nowDigits();
+  var s = sideDigits('startDate', 'startTime'), e = sideDigits('endDate', 'endTime'), now = nowDigits();
   var el = $('status');
-  var sBad = $('f_start').value.trim() && !s, eBad = $('f_end').value.trim() && !e;
-  $('f_start').style.borderColor = sBad ? 'var(--error)' : '';
-  $('f_end').style.borderColor = eBad ? 'var(--error)' : '';
-  if (sBad || eBad) { el.className = 'status off'; el.textContent = 'Check the date format (MM/DD/YYYY hh:mm:ss).'; return; }
   var show = (!s || now >= padS(s)) && (!e || now <= padE(e));
   if (show) {
     el.className = 'status on';
@@ -504,14 +525,18 @@ function updateClock(){
 }
 
 document.addEventListener('input', function(e){ if (e.target.matches('input, select, textarea')) refresh(); });
-document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(true); refresh(); } });
+document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(false); refresh(); } });
 
 $('testBtn').addEventListener('click', function(){
   var now = Date.now();
-  $('f_start').value = fieldValue(new Date(now - 2 * 60000));
-  $('f_end').value = fieldValue(new Date(now + 60 * 60000));
+  setSide('startDate', 'startTime', new Date(now - 2 * 60000));
+  setSide('endDate', 'endTime', new Date(now + 60 * 60000));
+  $('showTimes').checked = true; toggleTimes(); // reveal times so the test window is visible
   refresh();
 });
+
+function toggleTimes(){ $('timesRow').hidden = !$('showTimes').checked; }
+$('showTimes').addEventListener('change', function(){ toggleTimes(); refresh(); });
 
 function wireCopy(btnId, getText){
   $(btnId).addEventListener('click', function(){
@@ -688,11 +713,12 @@ var STATES = [
   });
 })();
 
-// Default to today's whole-day window in the chosen timezone.
+// Default to today's whole-day window in the chosen timezone (times keep their 00:00:00 / 23:59:59 defaults).
 function setDefaults(force){
-  var d = dateMDY(new Date());
-  if (force || !$('f_start').value) $('f_start').value = d + ' 00:00:00';
-  if (force || !$('f_end').value) $('f_end').value = d + ' 23:59:59';
+  var o = parts(new Date());
+  var today = o.year + '-' + o.month + '-' + o.day;
+  if (force || !$('startDate').value) $('startDate').value = today;
+  if (force || !$('endDate').value) $('endDate').value = today;
 }
 setDefaults(false);
 updateClock(); setInterval(updateClock, 1000);
