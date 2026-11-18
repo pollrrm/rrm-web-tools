@@ -81,6 +81,7 @@
   .step-body { min-width: 0; }
   .step-title { font-size: 16px; font-weight: 700; margin: 5px 0 3px; color: var(--text); }
   .step-desc { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; }
+  .step-opt { font-weight: 400; color: var(--text-dim); font-size: 13px; }
   @media (max-width: 560px) {
     #flow { padding: 2px 16px; }
     .step { grid-template-columns: 28px 1fr; gap: 12px; }
@@ -101,31 +102,13 @@
   input[type="time"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
   textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
   input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-  .inline-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; margin: 16px 0 0; }
+  .inline-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; margin: 0; }
   .inline-check input { width: auto; min-height: 0; accent-color: var(--accent); cursor: pointer; margin: 0; }
   .inline-check .hint { font-weight: 400; color: var(--text-dim); font-size: 11px; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
   .field-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; }
   .field-note strong { color: var(--text-muted); }
-
-  /* ---- Step 1: choose what you're making ---- */
-  .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 560px) { .choice { grid-template-columns: 1fr; } }
-  .seg {
-    position: relative; text-align: left; cursor: pointer; background: var(--input-bg); color: var(--text);
-    border: 1px solid var(--border-strong); border-radius: 9px; padding: 14px 16px 14px 42px;
-    font-size: 14.5px; font-weight: 700; font-family: inherit; transition: border-color .15s, background .15s;
-  }
-  .seg span { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--text-dim); line-height: 1.45; }
-  .seg::before {
-    content: ""; position: absolute; left: 16px; top: 17px; width: 16px; height: 16px; border-radius: 50%;
-    border: 2px solid var(--border-strong); transition: border-color .15s, background .15s;
-  }
-  .seg:hover { border-color: var(--accent); }
-  .seg.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-  .seg.active span { color: var(--text-muted); }
-  .seg.active::before { border-color: var(--accent); background: radial-gradient(circle at center, var(--accent) 0 4px, transparent 5px); }
 
   /* ---- Buttons ---- */
   .btn {
@@ -164,6 +147,16 @@
   .callout strong { color: var(--text); }
   .callout code { background: var(--input-bg); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
 
+  /* ---- Placeholder section (revealed by checkbox) ---- */
+  .ph-enable {
+    display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .ph-enable input { margin-top: 2px; accent-color: var(--accent); width: auto; cursor: pointer; }
+  .ph-enable .lbl { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .ph-enable .lbl span { display: block; font-weight: 400; font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+  #placeholderBody { margin-top: 18px; }
+
   /* WYSIWYG content editor */
   .wysiwyg { border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--input-bg); }
   .wtoolbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 6px; background: var(--panel-2); border-bottom: 1px solid var(--border-strong); }
@@ -197,7 +190,7 @@
 
 <a class="back-link" href="./index.html">&larr; All Tools</a>
 <h1>Promo Scheduler</h1>
-<p class="subtitle">Show content only during a date window, or show a placeholder whenever nothing's running. No plugin; works on any site, in any timezone. Follow the steps and copy the code at the end.</p>
+<p class="subtitle">Show a promo only during a date window, and optionally a placeholder that fills the gap whenever nothing's running. No plugin; works on any site, in any timezone. Follow the steps and copy the code at the end.</p>
 
 <div id="flow">
 
@@ -205,22 +198,8 @@
   <section class="step">
     <div class="step-num" aria-hidden="true"></div>
     <div class="step-body">
-      <div class="step-title">What are you making?</div>
-      <p class="step-desc">Pick one. You can switch anytime; the steps below adjust to match.</p>
-      <div class="choice" id="modeSeg">
-        <button type="button" class="seg active" data-mode="scheduled">Scheduled promo<span>Shows during the dates you set, then hides itself automatically.</span></button>
-        <button type="button" class="seg" data-mode="placeholder">Placeholder<span>Shows whenever no promo is running. Example: &ldquo;Check back for future promos.&rdquo;</span></button>
-      </div>
-      <p class="field-note" id="modeNote"></p>
-    </div>
-  </section>
-
-  <!-- STEP 2 -->
-  <section class="step">
-    <div class="step-num" aria-hidden="true"></div>
-    <div class="step-body">
       <div class="step-title">Client &amp; label</div>
-      <p class="step-desc">The timezone decides when &ldquo;now&rdquo; starts and ends. The label links a promo to the placeholder that should replace it.</p>
+      <p class="step-desc">The timezone decides when &ldquo;now&rdquo; begins and ends. The label ties the promo to its placeholder.</p>
       <div class="row">
         <div>
           <label>Client's state <span class="hint">(sets the timezone)</span></label>
@@ -252,15 +231,15 @@
       <p class="field-note" id="stateNote" style="color: var(--purple);"></p>
       <label>Label <span class="hint">(letters/numbers only, unique per site)</span></label>
       <input type="text" id="marker" value="timedPromo" spellcheck="false" autocomplete="off">
-      <p class="field-note">A short name that links a promo to its placeholder. <strong>Use the same label for both:</strong> the placeholder watches every promo with this label and appears only when none are running. From the client's address, pick the <strong>state</strong> and the timezone fills in (Arizona &amp; Hawaii skip daylight saving). Or choose <strong>Visitor's local time</strong> to run in each viewer's own zone.</p>
+      <p class="field-note">A short name that links a promo to its placeholder. <strong>Use the same label for both</strong> (this tool already does): the placeholder watches every promo with this label and appears only when none are running. From the client's address, pick the <strong>state</strong> and the timezone fills in (Arizona &amp; Hawaii skip daylight saving). Or choose <strong>Visitor's local time</strong> to run in each viewer's own zone.</p>
     </div>
   </section>
 
-  <!-- STEP 3 (scheduled only) -->
-  <section class="step" id="windowCard">
+  <!-- STEP 2 -->
+  <section class="step">
     <div class="step-num" aria-hidden="true"></div>
     <div class="step-body">
-      <div class="step-title">Schedule window</div>
+      <div class="step-title">When the promo runs</div>
       <p class="step-desc">Pick a start and end date on the calendar. Leave a date blank for an open end.</p>
       <div class="row">
         <div>
@@ -272,7 +251,7 @@
           <input type="date" id="endDate" autocomplete="off">
         </div>
       </div>
-      <label class="inline-check"><input type="checkbox" id="showTimes"> Set specific times <span class="hint">(otherwise it runs the whole day)</span></label>
+      <label class="inline-check" style="margin-top:16px;"><input type="checkbox" id="showTimes"> Set specific times <span class="hint">(otherwise it runs the whole day)</span></label>
       <div class="row" id="timesRow" hidden style="margin-top:10px;">
         <div>
           <label>Start time</label>
@@ -292,14 +271,14 @@
     </div>
   </section>
 
-  <!-- STEP 4 -->
+  <!-- STEP 3 -->
   <section class="step">
     <div class="step-num" aria-hidden="true"></div>
     <div class="step-body">
-      <div class="step-title">Content to show</div>
-      <p class="step-desc" id="contentDesc">Type what should appear. Leave blank if you'll only add a label to an element you already have (Step 5, Option B).</p>
+      <div class="step-title">Promo content</div>
+      <p class="step-desc">What shows while the promo is live. Leave blank if you'll just add the label to an element you already have (final step, Option B).</p>
       <div class="wysiwyg">
-        <div class="wtoolbar" id="wtoolbar">
+        <div class="wtoolbar" id="promoToolbar">
           <button type="button" data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
           <button type="button" data-cmd="formatBlock" data-val="H3" title="Heading 3">H3</button>
           <button type="button" data-cmd="formatBlock" data-val="P" title="Normal text">&para;</button>
@@ -312,12 +291,58 @@
           <button type="button" data-cmd="createLink" title="Add link">Link</button>
           <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
           <button type="button" data-cmd="clear" title="Clear formatting (back to normal text)">Clear</button>
-          <button type="button" class="wtoggle" id="toggleMode" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
+          <button type="button" class="wtoggle" id="promoToggle" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
         </div>
-        <div class="weditor" id="contentEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste content — e.g. a holiday-hours notice."></div>
-        <textarea class="whtml" id="contentHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
+        <div class="weditor" id="promoEditable" contenteditable="true" spellcheck="true" data-placeholder="Type or paste the promo — e.g. &ldquo;20% off, this week only.&rdquo;"></div>
+        <textarea class="whtml" id="promoHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
       </div>
       <p class="field-note">Format visually, or switch to <strong>HTML</strong> to paste/tweak code. Visual output is cleaned to semantic HTML (no inline styles) so it adopts each site's theme.</p>
+    </div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section class="step">
+    <div class="step-num" aria-hidden="true"></div>
+    <div class="step-body">
+      <div class="step-title">Placeholder <span class="step-opt">(optional)</span></div>
+      <p class="step-desc">Fill the gap when no promo is running, so the spot never looks empty. A good spot to keep visitors warm and capture leads between promos.</p>
+      <label class="ph-enable">
+        <input type="checkbox" id="usePlaceholder">
+        <span class="lbl">Add a placeholder for when no promo is running<span>Leave this off if you only need the scheduled promo.</span></span>
+      </label>
+
+      <div id="placeholderBody" hidden>
+        <label for="phTemplate">Start from a template <span class="hint">(optional — fills the editor below)</span></label>
+        <select id="phTemplate">
+          <option value="">Start from a template…</option>
+          <option value="join">Join the list — capture emails for the next deal</option>
+          <option value="checkback">Check back soon — the promo just ended</option>
+          <option value="pricing">Ask for pricing — no active offer right now</option>
+          <option value="season">Seasonal — next offer is coming</option>
+        </select>
+        <p class="field-note">Pick a template to fill the editor, then edit the wording and point the link at the right page. Each keeps a sign-up or contact link so a quiet stretch still brings in leads.</p>
+
+        <div class="wysiwyg" style="margin-top:14px;">
+          <div class="wtoolbar" id="phToolbar">
+            <button type="button" data-cmd="formatBlock" data-val="H2" title="Heading 2">H2</button>
+            <button type="button" data-cmd="formatBlock" data-val="H3" title="Heading 3">H3</button>
+            <button type="button" data-cmd="formatBlock" data-val="P" title="Normal text">&para;</button>
+            <span class="wsep"></span>
+            <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
+            <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
+            <span class="wsep"></span>
+            <button type="button" data-cmd="insertUnorderedList" title="Bulleted list">&bull; List</button>
+            <button type="button" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+            <button type="button" data-cmd="createLink" title="Add link">Link</button>
+            <button type="button" data-cmd="unlink" title="Remove link">Unlink</button>
+            <button type="button" data-cmd="clear" title="Clear formatting (back to normal text)">Clear</button>
+            <button type="button" class="wtoggle" id="phToggle" title="Switch between visual and HTML">&lt;/&gt; HTML</button>
+          </div>
+          <div class="weditor" id="phEditable" contenteditable="true" spellcheck="true" data-placeholder="Type the placeholder, or pick a template above."></div>
+          <textarea class="whtml" id="phHtml" spellcheck="false" style="display:none;" placeholder="Paste or edit HTML…"></textarea>
+        </div>
+        <p class="field-note">Shows only when none of this label's promos are running. It carries the same label plus <code>Else</code>, so it steps aside automatically the moment the next promo goes live.</p>
+      </div>
     </div>
   </section>
 
@@ -331,32 +356,40 @@
       <!-- Option A -->
       <div class="opt">
         <div class="opt-h">
-          <span class="opt-t">Option A: paste a ready-made block</span>
+          <span class="opt-t">Option A: paste one ready-made block</span>
           <button class="copy-btn" id="copyBlock" type="button">Copy</button>
         </div>
         <pre id="blockOut">&mdash;</pre>
-        <p class="field-note">Paste this wherever you want it to appear. It already includes the engine, so it works on its own, with nothing else to add.</p>
+        <p class="field-note">Includes the promo, the placeholder (if you added one), and the engine. Paste it wherever the content should appear and it works on its own, with nothing else to add.</p>
       </div>
 
       <div class="or-div">or</div>
 
       <!-- Option B -->
       <div class="opt">
-        <div class="opt-t" style="margin-bottom:4px;">Option B: add a label to an element you already have</div>
-        <p class="field-note" style="margin:0 0 12px;">Best when the thing you want to schedule is already on the page. Two pieces:</p>
+        <div class="opt-t" style="margin-bottom:4px;">Option B: add a label to elements you already have</div>
+        <p class="field-note" style="margin:0 0 12px;">Best when the things you want to schedule are already on the page.</p>
 
         <div class="opt-h">
-          <span class="opt-sub" style="margin:0;">1. The class (add it to your element)</span>
-          <button class="copy-btn" id="copyClass" type="button">Copy</button>
+          <span class="opt-sub" style="margin:0;">Promo — add this class to the promo element</span>
+          <button class="copy-btn" id="copyPromoClass" type="button">Copy</button>
         </div>
-        <pre id="classOut">&mdash;</pre>
-        <p class="field-note">Add this to the element's class list: its <code>class="…"</code> attribute, or your page builder's extra-class field.</p>
+        <pre id="promoClass">&mdash;</pre>
+        <p class="field-note">Add this to the element's <code>class="…"</code> attribute, or your page builder's extra-class field.</p>
+
+        <div id="phClassRow" hidden>
+          <div class="opt-h" style="margin-top:18px;">
+            <span class="opt-sub" style="margin:0;">Placeholder — add this class to the placeholder element</span>
+            <button class="copy-btn" id="copyPhClass" type="button">Copy</button>
+          </div>
+          <pre id="phClass">&mdash;</pre>
+        </div>
 
         <div class="opt-h" style="margin-top:18px;">
-          <span class="opt-sub" style="margin:0;">2. The engine (paste once per page)</span>
-          <button class="copy-btn" id="copySnippet" type="button">Copy</button>
+          <span class="opt-sub" style="margin:0;">The engine — paste once per page</span>
+          <button class="copy-btn" id="copyEngine" type="button">Copy</button>
         </div>
-        <pre id="snippetOut">&mdash;</pre>
+        <pre id="engineOut">&mdash;</pre>
         <div class="callout" id="engineNote">
           <strong>Each page needs this engine once.</strong> If the page already runs an older promo engine, replace that old <code>&lt;script&gt;</code> with this one, since it runs your existing promos too. Pasting it twice is harmless; it won't double-run. (Option A's block already includes it, so you don't need this piece there.)
         </div>
@@ -368,7 +401,7 @@
           <li>Everything is hidden by default and shown only while &ldquo;now&rdquo; (in the chosen timezone) is inside its window, so nothing flashes before its time.</li>
           <li>It runs in the browser, so caching can't keep an expired item visible. Clear the cache once after publishing so the new content goes out.</li>
           <li>You can schedule several promos independently, each with its own window; overlapping windows show at the same time.</li>
-          <li><strong>Placeholder</strong> builds a fallback (same label + <code>Else</code>) that appears only when none of that label's promos are running, filling every gap, then stepping aside when the next promo goes live.</li>
+          <li>The <strong>placeholder</strong> (same label + <code>Else</code>) appears only when none of that label's promos are running, filling every gap, then stepping aside when the next promo goes live.</li>
           <li>Dates are stored in the class as <code>&lt;label&gt;S&lt;YYYYMMDDHHMMSS&gt;</code> / <code>&lt;label&gt;E&lt;…&gt;</code>; a date-only value counts the whole day.</li>
         </ul>
       </details>
@@ -379,7 +412,6 @@
 
 <script>
 function $(id){ return document.getElementById(id); }
-var mode = 'scheduled'; // 'scheduled' | 'placeholder'
 
 // Read one side of the window from its date + time inputs → YYYYMMDDHHMMSS (14), or '' if no date.
 // Date comes from a native <input type="date"> (YYYY-MM-DD); time from <input type="time"> (HH:MM[:SS]).
@@ -418,13 +450,15 @@ function parts(date){
 }
 function human(digits){ return digits.length >= 14 ? digits.replace(/(....)(..)(..)(..)(..)(..)/, '$1-$2-$3 $4:$5:$6') : digits.replace(/(....)(..)(..)/, '$1-$2-$3'); }
 
+// ---- Classes ----
 function scheduleClass(){
   var m = marker();
-  if (mode === 'placeholder') return m + 'Else';
   var s = sideDigits('startDate', 'startTime'), e = sideDigits('endDate', 'endTime');
   var out = [m]; if (s) out.push(m + 'S' + s); if (e) out.push(m + 'E' + e);
   return out.join(' ');
 }
+function placeholderClass(){ return marker() + 'Else'; }
+function usePlaceholder(){ return $('usePlaceholder').checked; }
 
 function buildSnippet(){
   var m = marker();
@@ -492,85 +526,11 @@ function cleanHtml(html){
   tmp.querySelectorAll('p, div, h2, h3, li').forEach(function(n){ if (!n.textContent.trim() && !n.querySelector('img, br')) n.remove(); });
   return tmp.innerHTML.trim();
 }
-var editMode = 'visual';
-function contentHTML(){
-  return editMode === 'html' ? $('contentHtml').value.trim() : cleanHtml($('contentEditable').innerHTML);
-}
 
-// Self-contained block: the content wrapped in the scheduled class, plus the
-// scheduler — paste it once and it works on its own.
-function buildBlock(){
-  var content = contentHTML();
-  if (!content.trim()) return '';
-  return '<div class="' + scheduleClass() + '">\n' + content + '\n</div>\n' + buildSnippet();
-}
-
-function refresh(){
-  $('classOut').textContent = scheduleClass();
-  $('snippetOut').textContent = buildSnippet();
-  var b = buildBlock();
-  if (mode === 'placeholder') {
-    $('modeNote').textContent = 'The placeholder watches every "' + marker() + '" promo on the page and shows itself only when none are currently running: gaps between promos, before the first, and after the last. No dates needed.';
-    $('blockOut').textContent = b || '(Add the placeholder content in Step 4, e.g. "Check back for future promos", to generate a ready-to-paste block.)';
-  } else {
-    $('modeNote').textContent = '';
-    $('blockOut').textContent = b || '(Add content in Step 4 to generate a ready-to-paste block, or use Option B to schedule an element you already have.)';
-  }
-  refreshStatus();
-}
-
-function updateClock(){
-  $('clock').textContent = new Intl.DateTimeFormat('en-US', tzOpts({ weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })).format(new Date());
-  refreshStatus();
-}
-
-document.addEventListener('input', function(e){ if (e.target.matches('input, select, textarea')) refresh(); });
-document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(false); refresh(); } });
-
-$('testBtn').addEventListener('click', function(){
-  var now = Date.now();
-  setSide('startDate', 'startTime', new Date(now - 2 * 60000));
-  setSide('endDate', 'endTime', new Date(now + 60 * 60000));
-  $('showTimes').checked = true; toggleTimes(); // reveal times so the test window is visible
-  refresh();
-});
-
-function toggleTimes(){ $('timesRow').hidden = !$('showTimes').checked; }
-$('showTimes').addEventListener('change', function(){ toggleTimes(); refresh(); });
-
-function wireCopy(btnId, getText){
-  $(btnId).addEventListener('click', function(){
-    var btn = $(btnId), text = getText();
-    (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject())
-      .catch(function(){ var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); });
-    var orig = btn.textContent; btn.textContent = 'Copied ✓'; btn.classList.add('copied');
-    setTimeout(function(){ btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
-  });
-}
-wireCopy('copyBlock', buildBlock);
-wireCopy('copyClass', scheduleClass);
-wireCopy('copySnippet', buildSnippet);
-
-// ---- Mode: scheduled content vs. placeholder (shows when no promo is running) ----
-function setMode(m){
-  mode = m;
-  var segs = $('modeSeg').querySelectorAll('.seg');
-  for (var i = 0; i < segs.length; i++) segs[i].classList.toggle('active', segs[i].dataset.mode === m);
-  $('windowCard').hidden = (m === 'placeholder');
-  $('contentDesc').textContent = (m === 'placeholder')
-    ? 'Type the placeholder message, e.g. "Check back for future promos."'
-    : 'Type what should appear. Leave blank if you’ll only add a label to an element you already have (Step 5, Option B).';
-  refresh();
-}
-$('modeSeg').addEventListener('click', function(e){
-  var b = e.target.closest('.seg'); if (b) setMode(b.dataset.mode);
-});
-
-// Editor: prefer tags over inline styles, and <p> per line.
-try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
-try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
-(function(){
-  var editor = $('contentEditable'), htmlBox = $('contentHtml'), toggle = $('toggleMode'), toolbar = $('wtoolbar');
+// Build a reusable WYSIWYG editor around a set of elements; returns getHTML/setHTML/hasContent.
+function makeEditor(cfg){
+  var editor = $(cfg.editor), htmlBox = $(cfg.html), toggle = $(cfg.toggle), toolbar = $(cfg.toolbar);
+  var editMode = 'visual';
   // Keep the editor's selection when a toolbar button is pressed — buttons would
   // otherwise steal focus on mousedown and collapse the selection, so block
   // commands (headings / clear) would have nothing to act on.
@@ -581,13 +541,15 @@ try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e)
     var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null;
     var node = sel.getRangeAt(0).startContainer;
     if (node.nodeType === 3) node = node.parentNode;
+    // Only act on a selection that lives inside this editor.
+    var inside = node; while (inside && inside !== editor) inside = inside.parentNode;
+    if (!inside) return null;
+    node = sel.getRangeAt(0).startContainer; if (node.nodeType === 3) node = node.parentNode;
     while (node && node !== editor && !BLOCKS[node.tagName]) node = node.parentNode;
     return (node && node !== editor) ? node : null;
   }
   // Change the block containing the caret to <tag>. Without force, clicking the
-  // same heading again toggles back to a paragraph. Done by swapping the element
-  // directly — execCommand('formatBlock') nests tags when a whole line is
-  // selected and is unreliable for toggling headings off.
+  // same heading again toggles back to a paragraph.
   function setBlock(tag, force){
     var el = currentBlock(), want = tag.toLowerCase();
     if (!el) { document.execCommand('formatBlock', false, force ? want : tag); return; }
@@ -623,6 +585,7 @@ try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e)
   });
   editor.addEventListener('input', refresh);
   editor.addEventListener('blur', refresh);
+  htmlBox.addEventListener('input', refresh);
   toggle.addEventListener('click', function(){
     if (editMode === 'visual') {
       htmlBox.value = cleanHtml(editor.innerHTML);
@@ -637,7 +600,99 @@ try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e)
     }
     refresh();
   });
-})();
+  return {
+    getHTML: function(){ return editMode === 'html' ? htmlBox.value.trim() : cleanHtml(editor.innerHTML); },
+    setHTML: function(html){ editor.innerHTML = html; if (editMode === 'html') htmlBox.value = html; refresh(); },
+    hasContent: function(){ return (editMode === 'html' ? htmlBox.value : editor.textContent).trim().length > 0; }
+  };
+}
+
+// Editor: prefer tags over inline styles, and <p> per line. Set before editors are built.
+try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
+try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
+var promoEditor = makeEditor({ editor: 'promoEditable', html: 'promoHtml', toggle: 'promoToggle', toolbar: 'promoToolbar' });
+var phEditor    = makeEditor({ editor: 'phEditable',    html: 'phHtml',    toggle: 'phToggle',    toolbar: 'phToolbar' });
+
+// Ready-made, lead-focused placeholder starters (semantic HTML, no inline styles).
+var PH_TEMPLATES = {
+  join:      '<h3>More deals are on the way</h3><p>Want first dibs on our next promo? <a href="#">Join our list</a> and we’ll email you the moment it drops.</p>',
+  checkback: '<h3>This promo has ended</h3><p>Thanks for stopping by. Check back soon for our next offer.</p>',
+  pricing:   '<h3>No active offer right now</h3><p>We’d still love to help. <a href="#">Contact us</a> for today’s pricing.</p>',
+  season:    '<h3>Between promos at the moment</h3><p>Our next seasonal offer is just around the corner. <a href="#">Sign up</a> to be the first to know.</p>'
+};
+
+// Self-contained block: the promo + optional placeholder wrapped in their classes,
+// plus the scheduler — paste it once and it works on its own.
+function buildCombined(){
+  var out = [];
+  var pc = promoEditor.getHTML();
+  if (pc.trim()) out.push('<div class="' + scheduleClass() + '">\n' + pc + '\n</div>');
+  if (usePlaceholder()) {
+    var hc = phEditor.getHTML();
+    if (hc.trim()) out.push('<div class="' + placeholderClass() + '">\n' + hc + '\n</div>');
+  }
+  if (!out.length) return '';
+  return out.join('\n') + '\n' + buildSnippet();
+}
+
+function refresh(){
+  var on = usePlaceholder();
+  $('placeholderBody').hidden = !on;
+  $('phClassRow').hidden = !on;
+  $('promoClass').textContent = scheduleClass();
+  if (on) $('phClass').textContent = placeholderClass();
+  $('engineOut').textContent = buildSnippet();
+  var b = buildCombined();
+  if (!b) {
+    b = '(Add promo content in Step 3' + (on ? ', or placeholder content in Step 4,' : '') +
+        ' to generate a ready-to-paste block. For elements already on the page, use Option B.)';
+  }
+  $('blockOut').textContent = b;
+  refreshStatus();
+}
+
+function updateClock(){
+  $('clock').textContent = new Intl.DateTimeFormat('en-US', tzOpts({ weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })).format(new Date());
+  refreshStatus();
+}
+
+document.addEventListener('input', function(e){ if (e.target.matches('input, select, textarea')) refresh(); });
+document.addEventListener('change', function(e){ if (e.target.matches('select')) { setDefaults(false); refresh(); } });
+
+$('testBtn').addEventListener('click', function(){
+  var now = Date.now();
+  setSide('startDate', 'startTime', new Date(now - 2 * 60000));
+  setSide('endDate', 'endTime', new Date(now + 60 * 60000));
+  $('showTimes').checked = true; toggleTimes(); // reveal times so the test window is visible
+  refresh();
+});
+
+function toggleTimes(){ $('timesRow').hidden = !$('showTimes').checked; }
+$('showTimes').addEventListener('change', function(){ toggleTimes(); refresh(); });
+
+// Placeholder on/off + template picker.
+$('usePlaceholder').addEventListener('change', refresh);
+$('phTemplate').addEventListener('change', function(){
+  var html = PH_TEMPLATES[this.value];
+  this.value = ''; // it's an action menu, not a saved choice — snap back to the prompt
+  if (!html) return;
+  if (phEditor.hasContent() && !confirm('Replace the current placeholder content with this template?')) return;
+  phEditor.setHTML(html);
+});
+
+function wireCopy(btnId, getText){
+  $(btnId).addEventListener('click', function(){
+    var btn = $(btnId), text = getText();
+    (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(text) : Promise.reject())
+      .catch(function(){ var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); });
+    var orig = btn.textContent; btn.textContent = 'Copied ✓'; btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent = orig; btn.classList.remove('copied'); }, 1200);
+  });
+}
+wireCopy('copyBlock', buildCombined);
+wireCopy('copyPromoClass', scheduleClass);
+wireCopy('copyPhClass', placeholderClass);
+wireCopy('copyEngine', buildSnippet);
 
 // ---- US state → timezone (picked from the client's listed address) ----
 // [state, IANA timezone, note shown when the state spans more than one zone]
