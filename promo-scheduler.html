@@ -315,12 +315,12 @@
         <label for="phTemplate">Start from a template <span class="hint">(optional — fills the editor below)</span></label>
         <select id="phTemplate">
           <option value="">Start from a template…</option>
-          <option value="join">Join the list — capture emails for the next deal</option>
-          <option value="checkback">Check back soon — the promo just ended</option>
+          <option value="contact">Contact us — call or visit the contact page</option>
+          <option value="checkback">Check back — new specials added often</option>
           <option value="pricing">Ask for pricing — no active offer right now</option>
           <option value="season">Seasonal — next offer is coming</option>
         </select>
-        <p class="field-note">Pick a template to fill the editor, then edit the wording and point the link at the right page. Each keeps a sign-up or contact link so a quiet stretch still brings in leads.</p>
+        <p class="field-note">Pick a template to fill the editor, then swap in the client's real phone number and contact link. Each keeps a way to reach the company, so a quiet stretch still brings in leads.</p>
 
         <div class="wysiwyg" style="margin-top:14px;">
           <div class="wtoolbar" id="phToolbar">
@@ -615,10 +615,10 @@ var phEditor    = makeEditor({ editor: 'phEditable',    html: 'phHtml',    toggl
 
 // Ready-made, lead-focused placeholder starters (semantic HTML, no inline styles).
 var PH_TEMPLATES = {
-  join:      '<h3>More deals are on the way</h3><p>Want first dibs on our next promo? <a href="#">Join our list</a> and we’ll email you the moment it drops.</p>',
-  checkback: '<h3>This promo has ended</h3><p>Thanks for stopping by. Check back soon for our next offer.</p>',
-  pricing:   '<h3>No active offer right now</h3><p>We’d still love to help. <a href="#">Contact us</a> for today’s pricing.</p>',
-  season:    '<h3>Between promos at the moment</h3><p>Our next seasonal offer is just around the corner. <a href="#">Sign up</a> to be the first to know.</p>'
+  contact:   '<h3>No active specials right now</h3><p>We’d love to help you find the right fit. Call us at <a href="tel:+15551234567">(555) 123-4567</a> or visit our <a href="/contact">contact page</a>.</p>',
+  checkback: '<h3>Check back soon</h3><p>We’re between specials at the moment, but new offers go up often. <a href="/contact">Get in touch</a> and we’ll let you know what’s coming.</p>',
+  pricing:   '<h3>No active offer right now</h3><p>We’d still love to help. <a href="/contact">Contact us</a> or call <a href="tel:+15551234567">(555) 123-4567</a> for today’s pricing.</p>',
+  season:    '<h3>Our next seasonal offer is coming</h3><p>Want to be the first to know? <a href="/contact">Reach out</a> and we’ll keep you posted.</p>'
 };
 
 // Self-contained block: the promo + optional placeholder wrapped in their classes,
