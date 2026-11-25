@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RRM WP Helper",
-  "version": "0.7.0",
-  "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor. Includes a side panel for filling the active New Post page directly, including uploading the YouTube thumbnail and setting it as the featured image. Supports rrmathome.com (Home Improvement), seniorcaremarketingmax.com (Home Care), ringringmarketing.com (Funeral Homes), and hospicehavenmarketing.com (Hospice).",
+  "version": "0.8.0",
+  "description": "Sends video post data from RRM Web Support Tools into the WordPress Classic Editor. A side panel fills the active New Post page (Fill This Post) or opens the correct New Post page for you and fills it (Open & Fill), including uploading the YouTube thumbnail as the featured image. Supports rrmathome.com (Home Improvement), seniorcaremarketingmax.com (Home Care), ringringmarketing.com (Funeral Homes), and hospicehavenmarketing.com (Hospice).",
   "permissions": ["storage", "sidePanel", "tabs", "scripting"],
   "host_permissions": [
     "https://pollrrm.github.io/*",

@@ -81,6 +81,17 @@
   button.secondary:hover { background: #353b48; }
   button.fill-btn { background: #8b5cf6; }
   button.fill-btn:hover { background: #7c4ce0; }
+  /* Disabled Fill button: clearly greyed out and readable (overrides the purple
+     + hover above, which otherwise made a disabled button still look enabled). */
+  button.fill-btn:disabled,
+  button.fill-btn:disabled:hover {
+    background: #23262d;
+    color: #8a93a3;
+    cursor: not-allowed;
+  }
+  button.openfill-btn { background: #2f9e8f; }
+  button.openfill-btn:hover { background: #28897c; }
+  button.openfill-btn.busy { background: #4a4a4a; cursor: progress; }
   button.download-btn { background: #2a2f3a; color: #e6e6e6; }
   button.download-btn:hover { background: #353b48; }
   .hint { font-size: 11px; color: #8a93a3; margin-top: 6px; }
@@ -319,14 +330,14 @@
 <body>
 
 <h1>RRM WP Helper <span class="scope" id="nicheScope">—</span></h1>
-<p class="subtitle">Paste the email, pick the niche, then click <strong>Fill This Post</strong> on the active New Post page.</p>
+<p class="subtitle">Paste the email, pick the niche, then click <strong>Fill This Post</strong> (on an open New Post page) or <strong>Open &amp; Fill</strong> (opens the page for you).</p>
 
 <details class="notes">
   <summary>📋 Notes &amp; checklist — read before first use <span class="chevron">▶</span></summary>
   <div class="notes-body">
 
     <h4>What this does</h4>
-    <p>Reads the video-posting email you paste, extracts each video's title, content, YouTube ID, meta description, and thumbnail, then fills a WordPress <strong>New Post</strong> page for you — title, publish date, body, Yoast meta description, ACF YouTube ID, category, author, and the <strong>featured image</strong> (it uploads the YouTube thumbnail for you). It does <strong>not</strong> hit Publish; you review and finish by hand.</p>
+    <p>Reads the video-posting email you paste, extracts each video's title, content, YouTube ID, meta description, and thumbnail, then fills a WordPress <strong>New Post</strong> page for you — title, publish date, body, Yoast meta description, YouTube link, category/industry, author, and the <strong>featured image</strong> (it uploads the YouTube thumbnail for you). It does <strong>not</strong> hit Publish; you review and finish by hand.</p>
 
     <h4>Before you click Fill</h4>
     <ol>
@@ -350,10 +361,11 @@
     <h4>Good to know</h4>
     <ul>
       <li><strong>Formatting is preserved.</strong> Bulleted lists, bold and hyperlinks from the email carry through to the post as real <code>&lt;ul&gt;</code>, <code>&lt;strong&gt;</code> and <code>&lt;a&gt;</code> markup. <strong>Italic is intentionally dropped</strong> — these emails italicize the whole content block as a house style, so it would just wrap the entire post in <code>&lt;em&gt;</code>. The Yoast meta description is always plain text.</li>
+      <li><strong>Open &amp; Fill</strong> opens the correct New Post page in a new tab and fills it — handy from any tab (e.g. straight from your email), no need to open WordPress first. If WordPress asks you to <strong>log in</strong>, do it and the fill continues automatically once it returns you to the New Post page. Keep this side panel open until you see <strong>Filled ✓</strong> (the featured-image upload runs from here).</li>
       <li>Author is auto-set to <strong>Welton Hong</strong> (only if the Author box is enabled in Screen Options).</li>
       <li><strong>Featured image safeguards:</strong> if the post already has a featured image, it's left alone (so filling twice won't double up). Filling the same video again on another post reuses the earlier upload instead of adding a duplicate to the Media Library.</li>
       <li>Everything runs locally in your browser — no data is sent anywhere.</li>
-      <li>Funeral Homes posts get both <code>Funeral</code> and <code>Videos</code> categories; the others get <code>Videos</code>.</li>
+      <li><strong>RRM (Funeral Homes)</strong> posts go to the <strong>Videos</strong> post type under the <code>Funeral</code> industry; the other three sites get the <code>Videos</code> category.</li>
     </ul>
 
   </div>

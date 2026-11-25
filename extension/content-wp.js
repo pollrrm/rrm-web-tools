@@ -259,7 +259,7 @@ async function fillPost(p) {
     pendingFeaturedUi = ui;
     clearTimeout(pendingFeaturedTimer);
     pendingFeaturedTimer = setTimeout(
-      () => finishFeaturedStep('failed', 'no response — use Download Thumbnail'), 45000);
+      () => finishFeaturedStep('failed', 'no response — use Download Thumbnail'), 70000);
   } else {
     ui.finish(ui.allDone());
   }

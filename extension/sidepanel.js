@@ -12,6 +12,7 @@ const NICHES = {
     host: 'rrmathome.com',
     hostRe: /(^|\.)rrmathome\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
+    newPostUrl: 'https://www.rrmathome.com/wp-admin/post-new.php',
     categories: ['Videos']
   },
   'scmm': {
@@ -21,6 +22,7 @@ const NICHES = {
     host: 'seniorcaremarketingmax.com',
     hostRe: /(^|\.)seniorcaremarketingmax\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
+    newPostUrl: 'https://www.seniorcaremarketingmax.com/wp-admin/post-new.php',
     categories: ['Videos']
   },
   'hospice': {
@@ -30,6 +32,7 @@ const NICHES = {
     host: 'hospicehavenmarketing.com',
     hostRe: /(^|\.)hospicehavenmarketing\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
+    newPostUrl: 'https://www.hospicehavenmarketing.com/wp-admin/post-new.php',
     categories: ['Videos']
   },
   'rrm': {
@@ -39,6 +42,7 @@ const NICHES = {
     host: 'ringringmarketing.com',
     hostRe: /(^|\.)ringringmarketing\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
+    newPostUrl: 'https://www.ringringmarketing.com/wp-admin/post-new.php?post_type=rrm_video',
     // RRM's site was rebuilt: Videos are now a custom post type whose niche is
     // the rrm_industry taxonomy term "Funeral" (not a Funeral → Videos category
     // path). content-wp.js detects the Videos editor and ticks rrm_industry.
@@ -644,11 +648,10 @@ async function downloadEntry(entry) {
   }
 }
 
-async function fillCurrentTab(entry, btn) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.id) return;
-  const niche = getNiche();
-  const payload = {
+// Build the fill payload for a parsed video card. Shared by both the
+// "Fill This Post" (active tab) and "Open & Fill" (new tab) flows.
+function buildFillPayload(entry, niche = getNiche()) {
+  return {
     // Send rendered HTML so WP gets real <ul>/<strong>/<a> markup.
     // content-wp.js passes through anything that already contains tags.
     title: demark(entry.title),
@@ -662,40 +665,142 @@ async function fillCurrentTab(entry, btn) {
     publishDate: parsePublishDate(entry.date),
     featuredImage: true // side panel uploads the thumbnail after the fill
   };
+}
+
+// chrome.tabs.sendMessage, retried a few times. A page that just finished
+// loading may not have its content script listener registered yet (relevant for
+// the Open & Fill flow, where we message the tab the instant it reports ready).
+async function sendMessageWithRetry(tabId, msg, tries = 10, delayMs = 300) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try { return await chrome.tabs.sendMessage(tabId, msg); }
+    catch (e) { lastErr = e; await new Promise(r => setTimeout(r, delayMs)); }
+  }
+  throw lastErr;
+}
+
+// Sends the fill message to an already-loaded WP tab, then uploads + sets the
+// featured thumbnail. Returns { ok }. Button/UI messaging is the caller's job;
+// onBeforeFeatured (optional) lets the caller show an interim "Featured image…".
+async function sendFillToTab(tab, entry, onBeforeFeatured, niche) {
+  const payload = buildFillPayload(entry, niche || getNiche());
+  const res = await sendMessageWithRetry(tab.id, { type: 'RRM_FILL_POST', payload });
+  if (!(res && res.ok && !(res.status && res.status.error))) {
+    console.warn('[RRM Helper] Fill response:', res);
+    return { ok: false };
+  }
+  if (typeof onBeforeFeatured === 'function') onBeforeFeatured();
+  const feat = await setFeaturedThumbnail(tab, entry);
+  try {
+    await chrome.tabs.sendMessage(tab.id,
+      { type: 'RRM_FEATURED_STATUS', status: feat.status, detail: feat.detail });
+  } catch {/* tab navigated away — nothing to report to */}
+  return { ok: true };
+}
+
+// "Fill This Post" — fills the New Post page already open in the active tab.
+async function fillCurrentTab(entry, btn) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.id) return;
   const originalText = btn.textContent;
   btn.classList.add('busy');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Filling…';
+  let ok = false;
   try {
-    const res = await chrome.tabs.sendMessage(tab.id, { type: 'RRM_FILL_POST', payload });
-    if (res && res.ok && !(res.status && res.status.error)) {
-      btn.innerHTML = '<span class="spinner"></span>Featured image…';
-      const feat = await setFeaturedThumbnail(tab, entry);
-      try {
-        await chrome.tabs.sendMessage(tab.id,
-          { type: 'RRM_FEATURED_STATUS', status: feat.status, detail: feat.detail });
-      } catch {/* tab navigated away — nothing to report to */}
-      btn.textContent = 'Filled ✓';
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.classList.remove('busy');
-        refreshFillButtons();
-      }, 2200);
-    } else {
-      btn.textContent = 'Failed — see WP tab';
-      console.warn('[RRM Helper] Fill response:', res);
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.classList.remove('busy');
-        refreshFillButtons();
-      }, 3500);
-    }
+    const r = await sendFillToTab(tab, entry,
+      () => { btn.innerHTML = '<span class="spinner"></span>Featured image…'; });
+    ok = r.ok;
+    btn.textContent = ok ? 'Filled ✓' : 'Failed — see WP tab';
   } catch (e) {
     btn.classList.remove('busy');
     btn.textContent = originalText;
     refreshFillButtons();
     alert('Could not reach the WordPress page. Make sure the active tab is the New Post page on the selected niche, then try again.');
+    return;
   }
+  setTimeout(() => {
+    btn.textContent = originalText;
+    btn.classList.remove('busy');
+    refreshFillButtons();
+  }, ok ? 2200 : 3500);
+}
+
+// "Open & Fill" — opens the New Post page for the selected niche in a new tab
+// (works from any tab), then fills it once it loads. If WordPress bounces you to
+// its login screen first, it shows "Waiting for login…" and resumes the fill
+// automatically after you log in (WP returns you to the New Post page). Keep the
+// side panel open until "Filled ✓" so the featured-image upload can finish.
+async function openAndFill(entry, btn) {
+  const niche = getNiche();
+  const url = niche.newPostUrl;
+  if (!url) { alert('No New Post URL configured for this niche.'); return; }
+
+  const originalText = btn.textContent;
+  const reset = () => {
+    btn.classList.remove('busy');
+    btn.disabled = false;
+    btn.textContent = originalText;
+  };
+  btn.classList.add('busy');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Opening…';
+
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url, active: true });
+  } catch (e) {
+    reset();
+    alert('Could not open a new tab.');
+    return;
+  }
+  const tabId = tab.id;
+
+  const matchesPostPage = (u) => {
+    try { const x = new URL(u); return niche.hostRe.test(x.hostname) && niche.pathRe.test(x.pathname); }
+    catch { return false; }
+  };
+  const isLogin = (u) => /\/wp-login\.php/i.test(u || '');
+
+  let done = false;
+  let timer = null;
+  const cleanup = () => {
+    chrome.tabs.onUpdated.removeListener(listener);
+    if (timer) clearTimeout(timer);
+  };
+
+  const fill = async (loadedTab) => {
+    if (done) return;
+    done = true;
+    cleanup();
+    btn.innerHTML = '<span class="spinner"></span>Filling…';
+    try {
+      const r = await sendFillToTab(loadedTab, entry,
+        () => { btn.innerHTML = '<span class="spinner"></span>Featured image…'; }, niche);
+      btn.textContent = r.ok ? 'Filled ✓' : 'Failed — see WP tab';
+    } catch (e) {
+      btn.textContent = 'Failed — see WP tab';
+    }
+    setTimeout(reset, 2600);
+  };
+
+  function listener(updatedTabId, info, updatedTab) {
+    if (updatedTabId !== tabId || done) return;
+    const u = (updatedTab && updatedTab.url) || '';
+    if (isLogin(u)) { btn.innerHTML = '<span class="spinner"></span>Waiting for login…'; return; }
+    if (info.status === 'complete' && matchesPostPage(u)) fill(updatedTab);
+  }
+  chrome.tabs.onUpdated.addListener(listener);
+
+  // Stop waiting after 10 minutes so we don't hold a listener forever.
+  timer = setTimeout(() => { if (!done) { done = true; cleanup(); reset(); } }, 10 * 60 * 1000);
+
+  // The tab may already be fully loaded before the listener attached (fast or
+  // cached). Check its current state once to cover that race.
+  try {
+    const cur = await chrome.tabs.get(tabId);
+    if (!done && cur && cur.status === 'complete' && matchesPostPage(cur.url)) fill(cur);
+  } catch {/* tab closed already */}
 }
 
 // ---- Featured image: YouTube thumbnail → Media Library → featured image ----
@@ -818,16 +923,40 @@ async function rrmUploadAndSetFeatured(dataUrl, filename) {
     if (!params.action) params.action = 'upload-attachment';
 
     const blob = await (await fetch(dataUrl)).blob();
-    const fd = new FormData();
-    for (const k in params) fd.append(k, params[k]);
-    fd.append('name', filename);
-    fd.append('async-upload', blob, filename);
+    const doUpload = () => {
+      const fd = new FormData();
+      for (const k in params) fd.append(k, params[k]);
+      fd.append('name', filename);
+      fd.append('async-upload', blob, filename);
+      return fetch(uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+    };
 
-    const resp = await fetch(uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
+    // Retry on rate-limit / temporary-unavailable (Wordfence, host WAF, or just
+    // too many uploads in a row). Honor Retry-After when present, else back off.
+    let resp;
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      resp = await doUpload();
+      if (resp.status !== 429 && resp.status !== 503) break;
+      if (attempt === maxAttempts) break;
+      let waitMs = 3000 * attempt; // 3s, 6s, 9s between tries
+      const ra = resp.headers.get('retry-after');
+      if (ra) {
+        const raSec = parseInt(ra, 10);
+        if (Number.isFinite(raSec)) waitMs = Math.min(Math.max(raSec, 1) * 1000, 20000);
+      }
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+
     const text = await resp.text();
     let json;
     try { json = JSON.parse(text); }
-    catch (e) { return { ok: false, error: `upload returned HTTP ${resp.status} — still logged in?` }; }
+    catch (e) {
+      if (resp.status === 429 || resp.status === 503) {
+        return { ok: false, error: `server rate-limited the upload (HTTP ${resp.status}) — wait a minute, then re-fill or use Download Thumbnail` };
+      }
+      return { ok: false, error: `upload returned HTTP ${resp.status} — still logged in?` };
+    }
     if (!json || !json.success || !json.data || !json.data.id) {
       const d = json && json.data;
       return { ok: false, error: `upload rejected: ${(d && (d.message || JSON.stringify(d))) || 'unknown error'}` };
@@ -885,10 +1014,13 @@ function renderItem(entry) {
     ${copyRow('YT ID', entry.id)}
     <div class="filename">${escapeHtml(entry.filename)}</div>
     <button class="fill-btn" ${canFill ? '' : `disabled title="Open a New Post page on ${getNiche().host} first"`}>Fill This Post</button>
+    <button class="openfill-btn" title="Opens the correct New Post page in a new tab and fills it — works from any tab. If WordPress asks you to log in, do it and the fill continues.">Open &amp; Fill</button>
     <button class="download-btn">Download Thumbnail</button>
   `;
   const fillBtn = div.querySelector('.fill-btn');
   fillBtn.onclick = () => fillCurrentTab(entry, fillBtn);
+  const openBtn = div.querySelector('.openfill-btn');
+  openBtn.onclick = () => openAndFill(entry, openBtn);
   div.querySelector('.download-btn').onclick = () => downloadEntry(entry);
   attachCopyHandlers(div);
   grid.appendChild(div);
