@@ -6,7 +6,7 @@
 const TARGET_URLS = {
   rrmathome: 'https://www.rrmathome.com/wp-admin/post-new.php',
   scmm:      'https://www.seniorcaremarketingmax.com/wp-admin/post-new.php',
-  rrm:       'https://www.ringringmarketing.com/wp-admin/post-new.php',
+  rrm:       'https://www.ringringmarketing.com/wp-admin/post-new.php?post_type=rrm_video',
   hospice:   'https://www.hospicehavenmarketing.com/wp-admin/post-new.php'
 };
 

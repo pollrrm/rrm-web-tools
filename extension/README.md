@@ -39,7 +39,7 @@ No data leaves your browser except the uploads to your own WordPress sites.
 
 1. Click the extension icon to open the side panel, paste the task email, click **Extract**.
 2. Open a **New Post** page on the matching site (the niche dropdown auto-switches to it).
-3. Click **Fill This Post** and wait for **Filled ✓**. The progress panel fills: editor mode, title, publish date (email date, 5:00 AM), content, author, Yoast meta description, categories, ACF YouTube ID, featured image.
+3. Click **Fill This Post** and wait for **Filled ✓**. The progress panel fills: editor mode, title, publish date (email date, 4:00 AM), content, author, Yoast meta description, categories, ACF YouTube ID, featured image.
 4. Review, then **Publish** (or save as draft).
 
 ### Featured image safeguards

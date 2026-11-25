@@ -39,7 +39,10 @@ const NICHES = {
     host: 'ringringmarketing.com',
     hostRe: /(^|\.)ringringmarketing\.com$/i,
     pathRe: /\/wp-admin\/post(-new)?\.php/,
-    categories: ['Funeral', 'Videos']
+    // RRM's site was rebuilt: Videos are now a custom post type whose niche is
+    // the rrm_industry taxonomy term "Funeral" (not a Funeral → Videos category
+    // path). content-wp.js detects the Videos editor and ticks rrm_industry.
+    categories: ['Funeral']
   }
 };
 
@@ -409,7 +412,7 @@ function toMetaDescription(text) {
 
 // Parses a "Date of Posting" string from the email into a structured object.
 // Accepts "M/D", "MM/DD", "M/D/YY", "MM/DD/YYYY", "M-D", "M.D", etc.
-// Always sets time to 5:00 AM per the SOP. Defaults to current year if omitted.
+// Always sets time to 4:00 AM per the SOP. Defaults to current year if omitted.
 // Returns null if the string can't be parsed.
 function parsePublishDate(dateStr) {
   if (!dateStr) return null;
@@ -421,7 +424,7 @@ function parsePublishDate(dateStr) {
   let year    = m[3] ? parseInt(m[3], 10) : new Date().getFullYear();
   if (year < 100) year += 2000;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return { year, month, day, hour: 5, minute: 0 };
+  return { year, month, day, hour: 4, minute: 0 };
 }
 
 function stripHashtags(text) {

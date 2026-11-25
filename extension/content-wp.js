@@ -10,6 +10,12 @@
 //   5. Yoast SEO Meta Description (Draft.js)
 //   6. Categories (single top-level OR a path like ["Funeral","Videos"])
 //   7. ACF "youtube_id" field (rendered after the category click)
+//
+// Site branch — RRM "Videos" custom post type (post_type=rrm_video): the niche
+// lives in the rrm_industry taxonomy box (#rrm_industrychecklist) instead of
+// categories, and the YouTube value goes into a plain text field (#rrmw-youtube)
+// as a full URL instead of the ACF "youtube_id" field. Detected per page via
+// isRrmVideoPage(); every other site keeps the behavior above untouched.
 
 // ---- Entry point 1: storage-based (existing flow) ----
 (async function () {
@@ -73,9 +79,24 @@ async function fillPost(p) {
   const categories = (Array.isArray(p.categories) && p.categories.length)
     ? p.categories
     : ['Videos'];
-  const categoryStepLabel = categories.length > 1
-    ? `Categories: ${categories.join(' → ')}`
-    : `${categories[0]} category`;
+
+  // RRM's Videos custom post type stores the niche in the rrm_industry taxonomy
+  // box, not the category box, and has no "Videos" category (the post type IS
+  // Videos). Detect that page and adapt: tick rrm_industry, and drop a trailing
+  // "Videos" leaf if a caller still sends the old Funeral → Videos path.
+  const isRrmVideo = isRrmVideoPage();
+  const taxonomy = isRrmVideo ? 'rrm_industry' : 'category';
+  let termPath = categories;
+  if (isRrmVideo && termPath.length > 1 &&
+      String(termPath[termPath.length - 1]).trim().toLowerCase() === 'videos') {
+    termPath = termPath.slice(0, -1);
+  }
+
+  const categoryStepLabel = isRrmVideo
+    ? (termPath.length ? `Industry: ${termPath.join(' → ')}` : 'Industry')
+    : (categories.length > 1
+        ? `Categories: ${categories.join(' → ')}`
+        : `${categories[0]} category`);
 
   const ui = createProgressUI('RRM Helper — Filling post…');
   ui.addStep('title', 'Title');
@@ -85,7 +106,7 @@ async function fillPost(p) {
   if (p.author)      ui.addStep('author',  'Author');
   if (p.metaDesc)    ui.addStep('meta',    'Meta description (Yoast)');
   ui.addStep('category', categoryStepLabel);
-  if (p.ytId)        ui.addStep('acf',     'YouTube ID (ACF)');
+  if (p.ytId)        ui.addStep('acf',     isRrmVideo ? 'YouTube link' : 'YouTube ID (ACF)');
   if (p.featuredImage) ui.addStep('featured', 'Featured image');
 
   try {
@@ -191,20 +212,29 @@ async function fillPost(p) {
 
   // 4. Categories — supports a single top-level name OR a parent→child path.
   // Running AFTER author + meta gives ACF more time to fully initialize.
-  ui.update('category', 'running', 'waiting for ACF');
-  await waitForAcfReady(5000);
-  const catResult = fillCategoryPath(categories);
+  ui.update('category', 'running', isRrmVideo ? 'selecting industry' : 'waiting for ACF');
+  if (!isRrmVideo) await waitForAcfReady(5000); // RRM's YouTube field isn't ACF
+  const catResult = fillCategoryPath(termPath, taxonomy);
   if (catResult.failed.length === 0) {
     ui.update('category', 'done',
-      categories.length > 1 ? `${categories.join(' → ')} ✓` : null);
+      termPath.length > 1 ? `${termPath.join(' → ')} ✓` : null);
   } else {
     ui.update('category', 'failed',
       `failed at "${catResult.failed[0]}"${catResult.checked.length ? ` (got: ${catResult.checked.join(' → ')})` : ''}`);
   }
 
-  // 5. ACF YouTube ID (waits for ACF to render after category click)
+  // 5. YouTube field.
+  //  - RRM Videos CPT: a plain text input (#rrmw-youtube) that wants the full
+  //    URL and is always present (not gated behind a taxonomy term).
+  //  - Other sites: ACF "youtube_id" field that wants the bare 11-char ID and
+  //    only renders once the Videos category is ticked.
   let acfFilled = false;
-  if (p.ytId) {
+  if (p.ytId && isRrmVideo) {
+    ui.update('acf', 'running', 'filling YouTube link');
+    acfFilled = fillRrmYoutubeLink(p.ytId);
+    ui.update('acf', acfFilled ? 'done' : 'failed',
+      acfFilled ? null : 'YouTube link field (#rrmw-youtube) not found');
+  } else if (p.ytId) {
     ui.update('acf', 'running', 'waiting for ACF field');
     acfFilled = await fillAcfYoutubeId(p.ytId);
 
@@ -338,15 +368,41 @@ function nudgeAcf() {
   }
 }
 
+// True on the RRM "Videos" custom post type editor (post_type=rrm_video). That
+// screen has its own YouTube metabox (#rrmw-youtube) and uses the rrm_industry
+// taxonomy instead of categories, so the category + YouTube steps branch on it.
+// Detecting it from the page (rather than the payload) keeps both fill entry
+// points — side panel and the YT tool's "Send to ..." — correct on RRM.
+function isRrmVideoPage() {
+  return !!document.getElementById('rrmw-youtube') ||
+         !!(document.body && document.body.classList.contains('post-type-rrm_video'));
+}
+
+// Fills RRM's Videos YouTube field. Unlike the other sites' ACF "youtube_id"
+// field (bare 11-char ID), this is a plain text input that stores the full
+// watch URL.
+function fillRrmYoutubeLink(ytId) {
+  const input = document.getElementById('rrmw-youtube');
+  if (!input) {
+    console.warn('[RRM Helper] #rrmw-youtube field not found on the Videos editor.');
+    return false;
+  }
+  setNativeValue(input, `https://www.youtube.com/watch?v=${ytId}`);
+  return true;
+}
+
 // Walks a category path like ["Funeral","Videos"] and ticks each checkbox.
 // Subcategory matching is restricted to the previous level's <ul class="children">
 // so we never confuse, e.g., "Cemetery > Videos" with the desired "Funeral > Videos".
-function fillCategoryPath(path) {
+function fillCategoryPath(path, taxonomy = 'category') {
   const checked = [];
   const failed = [];
   const checkboxes = [];
 
-  const topLabels = document.querySelectorAll('#categorychecklist > li > label');
+  // WordPress renders a hierarchical taxonomy's checklist as
+  // <ul id="{taxonomy}checklist">, so this selector works for both the standard
+  // "category" box and RRM's "rrm_industry" box with no other change.
+  const topLabels = document.querySelectorAll(`#${taxonomy}checklist > li > label`);
   let parentLi = null;
   const wantTop = (path[0] || '').trim().toLowerCase();
   for (const lbl of topLabels) {
@@ -529,7 +585,7 @@ async function fillPublishDate(d) {
   return true;
 }
 
-// Pretty-print "May 6, 2026 at 5:00 AM" for the progress panel step label.
+// Pretty-print "May 6, 2026 at 4:00 AM" for the progress panel step label.
 function formatPublishLabel(d) {
   if (!d) return '';
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

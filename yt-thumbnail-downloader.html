@@ -635,7 +635,7 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
 
   // Parses a "Date of Posting" string from the email into a structured object.
   // Accepts "M/D", "MM/DD", "M/D/YY", "MM/DD/YYYY", "M-D", "M.D", etc.
-  // Always sets time to 5:00 AM per the SOP. Defaults to current year if omitted.
+  // Always sets time to 4:00 AM per the SOP. Defaults to current year if omitted.
   function parsePublishDate(dateStr) {
     if (!dateStr) return null;
     const s = String(dateStr).trim();
@@ -646,7 +646,7 @@ Video Link: https://www.youtube.com/watch?v=-edZVbQVefI
     let year    = m[3] ? parseInt(m[3], 10) : new Date().getFullYear();
     if (year < 100) year += 2000;
     if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    return { year, month, day, hour: 5, minute: 0 };
+    return { year, month, day, hour: 4, minute: 0 };
   }
 
   async function processSingle() {

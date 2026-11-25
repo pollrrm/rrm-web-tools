@@ -84,7 +84,7 @@ The existing `docx-batch-to-wordpress.html` already parses all of this correctly
 | Field | Source from .docx | WP target | Notes |
 |---|---|---|---|
 | **Title** | First bold paragraph after date hint | `#title` input | Already handled by `content-wp.js` |
-| **Date** | "M.D" line at top | Publish meta box | Already handled. Time = team default (set per-tool, e.g. 8:00 AM for blogs vs 5:00 AM for videos) |
+| **Date** | "M.D" line at top | Publish meta box | Already handled. Time = team default (set per-tool, e.g. 8:00 AM for blogs vs 4:00 AM for videos) |
 | **Content** | HTML body between title and `Word Count:` line, with H2 promotion | `#content` textarea + TinyMCE | Already handled (textarea write + background TinyMCE sync) |
 | **SEO Title** | `SEO Title Tag: …` line | Yoast SEO Title field | **NEW — you'll add this to `content-wp.js`** |
 | **SEO Meta Description** | `Meta Description: …` line | Yoast Meta Description (Draft.js) | Already handled — uses `execCommand('insertText')` trick |
@@ -185,7 +185,7 @@ syncTinyMCEInBackground(html);  // already defined in content-wp.js
 ### 7e. Publish Date — Classic Editor
 Inputs: `#mm` `#jj` `#aa` `#hh` `#mn`. Toggle visible with `a.edit-timestamp` → commit with `a.save-timestamp`. Already implemented in `fillPublishDate`. Just pass `{ year, month, day, hour, minute }`.
 
-For blog posts the team uses **8:00 AM** (verify with stakeholder; videos use 5:00 AM).
+For blog posts the team uses **8:00 AM** (verify with stakeholder; videos use 4:00 AM).
 
 ### 7f. Category path — parent → child
 `fillCategoryPath(['Funeral', 'Blogs'])` already walks the WP `#categorychecklist` looking for top-level "Funeral", then descends into its `<ul class="children">` for "Blogs". Reuses `tickCheckboxForAcf` which does a thorough event sequence (mousedown → mouseup → label click → fallback to input click → forced `.checked = true`). The retoggle retry handles ACF timing races. **Don't re-implement** — just pass the right `categories` array in the payload.
